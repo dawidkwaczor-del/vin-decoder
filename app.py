@@ -394,28 +394,232 @@ def checksum_verify(vin: str) -> tuple[bool, str, str]:
     expected = 'X' if remainder == 10 else str(remainder)
     return expected == vin[8], expected, vin[8]
 
+# ─── VDS dekoderzy dla konkretnych marek ───────────────────────
+# Ford Europa (WF0): pozycja 4 = typ nadwozia
+FORD_EU_BODY = {
+    'A': 'Sedan 5-drzwiowy', 'B': 'Sedan 3-drzwiowy', 'C': 'Cabrio',
+    'D': 'Kombi 2-drzwiowe', 'E': 'Sedan 3-drzwiowy (hatchback)',
+    'F': 'Sedan 4-drzwiowy', 'G': 'Kombi / Estate 5-drzwiowe',
+    'H': 'SUV / Crossover', 'K': 'Coupe', 'M': 'Minivan / MPV',
+    'N': 'Kombi 4/5-drzwiowe', 'P': 'Pick-up', 'S': 'Kombi/Bus',
+    'T': 'Van', 'V': 'Van', 'W': 'Kombi 5-drzwiowe',
+}
+# Ford Europa: pozycja 8 = silnik (przybliżone)
+FORD_EU_ENGINE = {
+    'A': 'Benzyna 1.0 EcoBoost', 'B': 'Benzyna 1.4',
+    'C': 'Benzyna 1.6', 'D': 'Diesel 1.5 TDCi',
+    'E': 'Benzyna 1.5 EcoBoost', 'F': 'Benzyna 1.6 EcoBoost',
+    'G': 'Benzyna 2.0 / Diesel 2.0 TDCi',
+    'H': 'Benzyna 2.3 EcoBoost', 'J': 'Diesel 1.6 TDCi',
+    'K': 'Diesel 2.0 TDCi 115KM', 'L': 'Diesel 2.0 TDCi 140KM',
+    'M': 'Diesel 2.0 TDCi 163KM', 'N': 'Benzyna 1.5',
+    'P': 'Diesel 1.5 TDCi', 'R': 'Benzyna 2.5 Turbo (RS)',
+    'S': 'Diesel 1.8 TDCi', 'T': 'Benzyna 2.0 Ti-VCT',
+    'U': 'Benzyna 1.0 EcoBoost 100KM', 'V': 'Benzyna 1.5 EcoBoost 182KM',
+    'W': 'Diesel 2.0 TDCi 180KM', 'X': 'Elektryczny',
+    'Y': 'Benzyna 1.6 Ti-VCT', 'Z': 'Benzyna 2.0 GDi',
+    '2': 'Benzyna 1.6', '5': 'Benzyna 2.0 DOHC',
+    '8': 'Diesel 1.8 TDDI',
+}
+
+# VW/Audi/Skoda/SEAT: pozycja 4 = model/segment
+VW_MODEL = {
+    'A': 'Polo / A1', 'B': 'Golf / A3 / Octavia',
+    'C': 'Passat / A4 / Superb', 'D': 'Phaeton / A8 / A6',
+    'E': 'Touareg / Q7 / Cayenne', 'F': 'Tiguan / Q5 / Yeti',
+    'G': 'Touran / Sharan', 'H': 'T-Roc / Q2',
+    'J': 'Jetta', 'K': 'Arteon / A5',
+    'L': 'Caddy', 'M': 'T5 / T6 Transporter',
+    'T': 'Touareg II', 'Z': 'ID.3 / ID.4 (EV)',
+}
+# VW pozycja 5+6 = silnik (przybliżone)
+VW_ENGINE_POS8 = {
+    'A': 'Benzyna 1.0 MPI', 'B': 'Benzyna 1.2 TSI',
+    'C': 'Benzyna 1.4 TSI', 'D': 'Benzyna 1.6 MPI',
+    'E': 'Benzyna 2.0 TSI', 'F': 'Diesel 1.6 TDI',
+    'G': 'Diesel 2.0 TDI 150KM', 'H': 'Diesel 2.0 TDI 184KM',
+    'J': 'Benzyna 1.8 TSI', 'K': 'Diesel 2.0 TDI 110KM',
+    'L': 'Benzyna 1.5 TSI', 'M': 'Diesel 3.0 TDI V6',
+    'N': 'Benzyna 2.5 R5', 'P': 'Benzyna 3.6 V6',
+    'R': 'Benzyna 4.0 V8 (Porsche)', 'S': 'Benzyna 1.4 TSI 125KM',
+    'T': 'Benzyna 2.0 TFSI', 'U': 'Benzyna 1.0 eTSI',
+    'V': 'Elektryczny (MEB)', 'W': 'Diesel 1.9 TDI',
+    'X': 'Benzyna 1.4 TGI (CNG)', 'Y': 'Hybryd plug-in',
+}
+
+# BMW: pozycja 4 = seria/model
+BMW_MODEL = {
+    'A': '1 Series', 'B': '2 Series', 'C': '3 Series',
+    'D': '4 Series', 'E': '5 Series', 'F': '6 Series',
+    'G': '7 Series', 'H': '8 Series', 'J': 'X1',
+    'K': 'X2', 'L': 'X3', 'M': 'X4', 'N': 'X5',
+    'P': 'X6', 'R': 'X7', 'S': 'Z4', 'T': 'i3',
+    'U': 'i4', 'V': 'iX', 'W': 'M3/M4', 'X': 'M5/M6',
+    'Y': 'Z4', 'Z': '4 Series Gran Coupe',
+}
+
+# Fabryki Forda w Europie (poz. 11)
+FORD_EU_PLANT = {
+    'A': 'Valencia, Hiszpania',
+    'B': 'Saarlouis, Niemcy',
+    'C': 'Gölcük, Turcja',
+    'D': 'Düsseldorf, Niemcy',
+    'E': 'Genk, Belgia',
+    'F': 'Fiesta (Köln), Niemcy',
+    'G': 'Gent, Belgia',
+    'H': 'Halewood, Wielka Brytania',
+    'K': 'Kocaeli, Turcja',
+    'M': 'Moskwa / Cuautitlan',
+    'N': 'Niehl, Köln (Niemcy)',
+    'S': 'Saarlouis, Niemcy',
+    'T': 'Transit (Southampton/Turkey)',
+    'V': 'Valencia, Hiszpania',
+    'W': 'Wayne, Michigan (USA)',
+}
+
+# Fabryki VW Group (poz. 11)
+VW_PLANT = {
+    'A': 'Ingolstadt (Audi)',
+    'B': 'Bratysława (Słowacja)',
+    'C': 'Chattanooga, USA',
+    'D': 'Wolfsburg (VW)',
+    'E': 'Emden (VW)',
+    'G': 'Graz, Austria (Magna)',
+    'H': 'Hannover (VW)',
+    'K': 'Osnabrück (VW)',
+    'M': 'Mladá Boleslav (Škoda)',
+    'N': 'Neckarsulm (Audi)',
+    'P': 'Pamplona (VW)',
+    'S': 'Stuttgart (Porsche)',
+    'T': 'Türkiye (VW)',
+    'W': 'Wilhelmsburg / Wiedeń',
+    'X': 'Martorell (SEAT)',
+    'Z': 'Zwickau (VW EV)',
+}
+
+def decode_vds_ford_eu(vin: str) -> dict:
+    """Dekoduje VDS dla Forda Europa (WF0)."""
+    result = {}
+    body = FORD_EU_BODY.get(vin[3], None)
+    if body:
+        result["Typ nadwozia (VDS poz. 4)"] = body
+    engine = FORD_EU_ENGINE.get(vin[7], None)
+    if engine:
+        result["Silnik (VDS poz. 8)"] = engine
+    plant = FORD_EU_PLANT.get(vin[10], None)
+    if plant:
+        result["Fabryka (poz. 11)"] = plant
+    return result
+
+def decode_vds_vw_group(vin: str) -> dict:
+    """Dekoduje VDS dla grupy VW (WAU, WVW, TMB, VSS...)."""
+    result = {}
+    model = VW_MODEL.get(vin[3], None)
+    if model:
+        result["Model/Segment (VDS poz. 4)"] = model
+    engine = VW_ENGINE_POS8.get(vin[7], None)
+    if engine:
+        result["Silnik (VDS poz. 8)"] = engine
+    plant = VW_PLANT.get(vin[10], None)
+    if plant:
+        result["Fabryka (poz. 11)"] = plant
+    return result
+
+def decode_vds_bmw(vin: str) -> dict:
+    """Dekoduje VDS dla BMW."""
+    result = {}
+    model = BMW_MODEL.get(vin[3], None)
+    if model:
+        result["Model/Seria (VDS poz. 4)"] = model
+    return result
+
+def smart_model_year(vin: str, wmi: str) -> str:
+    """
+    Inteligentnie ustala rok modelowy.
+    Jeśli WMI jest znane i aktywne po 2000 r., eliminuje starszy cykl.
+    """
+    year_char = vin[9]
+    # Znaki cyfr 1-9 są jednoznaczne (2001-2009)
+    UNAMBIGUOUS = {'1':2001,'2':2002,'3':2003,'4':2004,'5':2005,
+                   '6':2006,'7':2007,'8':2008,'9':2009}
+    if year_char in UNAMBIGUOUS:
+        return str(UNAMBIGUOUS[year_char])
+
+    # Litery — cykl powtarza się: A=1980/2010, B=1981/2011...
+    LETTER_OFFSET = {
+        'A':0,'B':1,'C':2,'D':3,'E':4,'F':5,'G':6,'H':7,
+        'J':8,'K':9,'L':10,'M':11,'N':12,'P':13,'R':14,
+        'S':15,'T':16,'V':17,'W':18,'X':19,'Y':20
+    }
+    if year_char not in LETTER_OFFSET:
+        return "Nieznany"
+
+    offset = LETTER_OFFSET[year_char]
+    year_old = 1980 + offset
+    year_new = 2010 + offset
+
+    # Producenci którzy istnieją tylko od określonego roku
+    MODERN_ONLY = {
+        # WMI: min rok produkcji
+        "WF0": 1993, "WVW": 1975, "WAU": 1985, "WBA": 1975,
+        "WDB": 1975, "TMB": 1991, "5YJ": 2012, "5YF": 2012,
+        "YV1": 1975, "YV4": 2002, "YK1": 2009,
+    }
+    min_year = MODERN_ONLY.get(wmi, 0)
+
+    # Jeśli stary rok jest przed minimum producenta, wybierz nowy
+    if year_old < min_year:
+        return str(year_new) if year_new <= 2026 else str(year_old)
+
+    # Heurystyka: jeśli numer seryjny jest duży (>100000), to nowsze auto
+    try:
+        serial = int(vin[11:17])
+        if serial > 100000 and year_new <= 2026:
+            return f"{year_new} (prawdopodobnie)"
+    except:
+        pass
+
+    # Nie da się jednoznacznie ustalić
+    if year_new <= 2026:
+        return f"{year_old} lub {year_new}"
+    return str(year_old)
+
 def decode_vin_manual(vin: str) -> dict:
     result = {}
     wmi = vin[:3]
 
     country = COUNTRY_MAP.get(vin[0], "Nieznany region")
-    result["Kraj produkcji (z VIN)"] = country
+    result["🌍 Kraj produkcji"] = country
 
+    manufacturer = None
     if wmi in WMI_DB:
         manufacturer, country_wmi = WMI_DB[wmi]
-        result["Producent"] = manufacturer
-        result["Kraj producenta"] = country_wmi
+        result["🏭 Producent"] = manufacturer
+        result["📍 Kraj producenta"] = country_wmi
     else:
-        result["Kod producenta (WMI)"] = wmi
+        result["🏭 Kod WMI (producent)"] = wmi
 
-    year_str = MODEL_YEAR_MAP.get(vin[9], "Nieznany")
-    result["Rok modelowy"] = year_str
-    result["WMI (poz. 1–3)"] = wmi
-    result["VDS (poz. 4–9)"] = vin[3:9]
-    result["VIS (poz. 10–17)"] = vin[9:17]
-    result["Numer seryjny (poz. 12–17)"] = vin[11:17]
-    result["Znak roku (poz. 10)"] = vin[9]
-    result["Znak montażu (poz. 11)"] = vin[10]
+    # Inteligentny rok modelowy
+    year_str = smart_model_year(vin, wmi)
+    result["📅 Rok modelowy"] = year_str
+
+    # Dekodowanie VDS zależnie od producenta
+    vds_data = {}
+    if wmi in ("WF0", "WF1", "WF2"):
+        vds_data = decode_vds_ford_eu(vin)
+    elif wmi in ("WVW", "WAU", "WA1", "WP0", "WP1", "TMB", "TMA",
+                 "VSS", "VSA", "VSB", "VSC", "VSD", "VS6"):
+        vds_data = decode_vds_vw_group(vin)
+    elif wmi in ("WBA", "WBS", "WBY"):
+        vds_data = decode_vds_bmw(vin)
+
+    result.update(vds_data)
+
+    # Dane techniczne VIN
+    result["🔢 WMI (poz. 1–3)"] = wmi
+    result["🔢 VDS (poz. 4–9)"] = vin[3:9]
+    result["🔢 VIS (poz. 10–17)"] = vin[9:17]
+    result["🔢 Nr seryjny (poz. 12–17)"] = vin[11:17]
 
     return result
 

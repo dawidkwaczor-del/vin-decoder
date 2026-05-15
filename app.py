@@ -251,24 +251,79 @@ def checksum_verify(vin: str) -> tuple[bool, str, str]:
 # ─────────────────────────────────────────────
 #  ETAP 3 – DEKODOWANIE NHTSA API
 # ─────────────────────────────────────────────
-FIELDS_MAP = {
-    "Make":                       "Marka",
-    "Model":                      "Model",
-    "Model Year":                 "Rok modelowy",
-    "Plant Country":              "Kraj produkcji",
-    "Vehicle Type":               "Typ pojazdu",
-    "Body Class":                 "Typ nadwozia",
-    "Displacement (L)":           "Pojemność silnika (L)",
-    "Engine Number of Cylinders": "Liczba cylindrów",
-    "Drive Type":                 "Rodzaj napędu",
+
+# Grupy tematyczne: (etykieta_PL, klucz_angielski_z_API)
+GROUPS = {
+    "🚗 Podstawowe informacje": [
+        ("Marka",                   "Make"),
+        ("Model",                   "Model"),
+        ("Seria / Trim",            "Series"),
+        ("Rok modelowy",            "Model Year"),
+        ("Typ pojazdu",             "Vehicle Type"),
+        ("Typ nadwozia",            "Body Class"),
+        ("Liczba drzwi",            "Doors"),
+        ("Liczba miejsc",           "Seating Rows"),
+        ("Przeznaczenie",           "Destination Market"),
+    ],
+    "⚙️ Silnik i napęd": [
+        ("Pojemność silnika (L)",   "Displacement (L)"),
+        ("Pojemność silnika (CC)",  "Displacement (CC)"),
+        ("Pojemność silnika (CI)",  "Displacement (CI)"),
+        ("Liczba cylindrów",        "Engine Number of Cylinders"),
+        ("Układ cylindrów",         "Engine Configuration"),
+        ("Moc silnika (KM)",        "Engine Brake (hp) From"),
+        ("Typ paliwa podstawowy",   "Fuel Type - Primary"),
+        ("Typ paliwa wtórny",       "Fuel Type - Secondary"),
+        ("Rodzaj napędu",           "Drive Type"),
+        ("Skrzynia biegów",         "Transmission Style"),
+        ("Liczba biegów",           "Transmission Speeds"),
+        ("Turbosprężarka",          "Turbo"),
+        ("Typ elektr. silnika",     "Electrification Level"),
+        ("Zasięg EV (mile)",        "EV Drive Range (miles) From"),
+    ],
+    "🏭 Produkcja i identyfikacja": [
+        ("Producent",               "Manufacturer Name"),
+        ("Kraj produkcji",          "Plant Country"),
+        ("Miasto fabryki",          "Plant City"),
+        ("Stan fabryki (USA)",      "Plant State"),
+        ("Firma fabryki",           "Plant Company Name"),
+        ("Numer GVWR",              "GVWR"),
+        ("Klasa GVWR",              "GVWR Class"),
+        ("Kod WMI",                 "WMI"),
+        ("Numer seryjny (VDS)",     "VDS"),
+        ("Numer VIS",               "VIS"),
+    ],
+    "🛡️ Bezpieczeństwo": [
+        ("Poduszki powietrzne",     "Air Bag Loc Front"),
+        ("Poduszki boczne",         "Air Bag Loc Side"),
+        ("Kurtyny powietrzne",      "Air Bag Loc Curtain"),
+        ("Poduszka kolana kierow.", "Air Bag Loc Knee"),
+        ("System ABS",              "Anti-Brake System (ABS)"),
+        ("Typ hamulców",            "Brake System Type"),
+        ("Sterowanie hamulcami",    "Brake System Description"),
+        ("TPMS",                    "Tire Pressure Monitoring System (TPMS) Type"),
+        ("Aktywny układ kier.",     "Active Safety System Note"),
+    ],
+    "📐 Wymiary i nadwozie": [
+        ("Rozstaw osi (cale)",      "Wheelbase (inches) From"),
+        ("Długość (cale)",          "Overall Length (inches) From"),
+        ("Szerokość (cale)",        "Overall Width (inches) From"),
+        ("Wysokość (cale)",         "Overall Height (inches) From"),
+        ("Prześwit (cale)",         "Ground Clearance (inches) From"),
+        ("Ładowność (funt)",        "Payload Capacity (lbs) From"),
+        ("DMC (funt)",              "Gross Vehicle Weight Rating From"),
+        ("Liczba osi",              "Axles"),
+        ("Typ przyczepy",           "Trailer Type Connection"),
+        ("Długość przyczepy (ft)",  "Trailer Length (feet) From"),
+    ],
 }
 
 def decode_vin_api(vin: str) -> tuple[bool, dict, str]:
     """
-    Wywołuje NHTSA API i zwraca (ok, data_dict, error_msg).
-    data_dict zawiera przefiltrowane i przetłumaczone pola.
+    Wywołuje NHTSA DecodeVinValuesExtended API i zwraca (ok, data_dict, error_msg).
+    data_dict to słownik {pl_label: value} dla wszystkich niepustych pól.
     """
-    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/{vin}?format=json"
+    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/{vin}?format=json"
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
@@ -283,16 +338,22 @@ def decode_vin_api(vin: str) -> tuple[bool, dict, str]:
 
     try:
         payload = resp.json()
-        results = payload.get("Results", [])
+        # DecodeVinValuesExtended zwraca Results jako lista z jednym dict
+        results_list = payload.get("Results", [])
+        if not results_list:
+            return False, {}, "API zwróciło pustą odpowiedź."
+        raw = results_list[0]  # płaski słownik klucz->wartość
     except Exception:
         return False, {}, "Nie udało się sparsować odpowiedzi JSON z serwera NHTSA."
 
+    BAD = {"", "not applicable", "n/a", "none", "0", "0.0"}
+
     data = {}
-    for item in results:
-        var = item.get("Variable", "")
-        val = item.get("Value", None)
-        if var in FIELDS_MAP and val and val.strip() and val.strip().lower() != "not applicable":
-            data[FIELDS_MAP[var]] = val.strip()
+    for group_label, fields in GROUPS.items():
+        for pl_label, api_key in fields:
+            val = raw.get(api_key, "")
+            if val and val.strip().lower() not in BAD:
+                data[pl_label] = val.strip()
 
     if not data:
         return False, {}, "API zwróciło odpowiedź, ale nie znaleziono żadnych danych dla tego VIN. Może to być numer spoza bazy NHTSA (pojazdy europejskie są czasami nieznane)."
@@ -361,31 +422,35 @@ if decode_btn:
                 st.markdown('<span class="badge badge-err">⛔ Błąd API</span>', unsafe_allow_html=True)
                 st.error(api_err)
             else:
-                st.markdown('<span class="badge badge-ok">✓ Dane pobrane pomyślnie</span>', unsafe_allow_html=True)
+                total_fields = len(api_data)
+                st.markdown(f'<span class="badge badge-ok">✓ Dane pobrane pomyślnie — znaleziono {total_fields} parametrów</span>', unsafe_allow_html=True)
 
-                # Wyświetl kafelki w układzie 3-kolumnowym
-                cols_def = [
-                    "Marka", "Model", "Rok modelowy",
-                    "Kraj produkcji", "Typ pojazdu", "Typ nadwozia",
-                    "Pojemność silnika (L)", "Liczba cylindrów", "Rodzaj napędu",
-                ]
+                # Wyświetl pogrupowane sekcje
+                for group_label, fields in GROUPS.items():
+                    # Zbierz tylko te pola grupy, które mamy w danych
+                    group_fields = [(pl, val) for pl, _ in fields
+                                    if (val := api_data.get(pl))]
+                    if not group_fields:
+                        continue
 
-                # Filtruj do tych, które faktycznie mamy
-                available = [f for f in cols_def if f in api_data]
-                # Dopełnij do wielokrotności 3
-                while len(available) % 3 != 0:
-                    available.append(None)
+                    st.markdown(f'<div class="section-label">{group_label}</div>', unsafe_allow_html=True)
 
-                for row_start in range(0, len(available), 3):
-                    cols = st.columns(3)
-                    for ci, field in enumerate(available[row_start:row_start+3]):
-                        with cols[ci]:
-                            if field:
-                                st.markdown(f"""
-                                <div class="result-card" style="height:100px;">
-                                    <h3>{field}</h3>
-                                    <p>{api_data[field]}</p>
-                                </div>""", unsafe_allow_html=True)
+                    # Dopełnij do wielokrotności 3
+                    padded = group_fields[:]
+                    while len(padded) % 3 != 0:
+                        padded.append(None)
+
+                    for row_start in range(0, len(padded), 3):
+                        cols = st.columns(3)
+                        for ci, item in enumerate(padded[row_start:row_start+3]):
+                            with cols[ci]:
+                                if item:
+                                    pl_label, val = item
+                                    st.markdown(f"""
+                                    <div class="result-card" style="min-height:90px;">
+                                        <h3>{pl_label}</h3>
+                                        <p>{val}</p>
+                                    </div>""", unsafe_allow_html=True)
 
                 # Dodaj do historii
                 if vin_clean not in st.session_state.history:

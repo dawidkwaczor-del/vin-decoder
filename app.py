@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import re
 import time
@@ -397,75 +398,92 @@ def render_table(data: dict):
                 unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-#  CLAUDE AI — DEKODOWANIE VIN
+#  CLAUDE AI — komponent HTML/JS
 # ─────────────────────────────────────────────
-def decode_with_claude(vin: str, manufacturer: str, country: str, year_hint: str) -> dict | None:
-    """
-    Wysyła VIN do Claude API i prosi o zdekodowanie.
-    Zwraca słownik z polami lub None przy błędzie.
-    """
-    prompt = f"""Zdekoduj poniższy numer VIN pojazdu i zwróć WYŁĄCZNIE obiekt JSON bez żadnych innych słów, komentarzy ani formatowania markdown.
+def render_ai_component(vin: str, manufacturer: str, country: str, year_hint: str):
+    """Renderuje komponent HTML który wywołuje Claude API z przeglądarki."""
+    prompt_text = (
+        f"Zdekoduj VIN: {vin}\n"
+        f"Znane: Producent={manufacturer}, Kraj={country}, Rok={year_hint}\n\n"
+        "Zwróc TYLKO JSON (bez markdown):\n"
+        "{\"marka\":\"...\",\"model\":\"...\",\"generacja\":\"...\","
+        "\"rok_modelowy\":\"...\",\"typ_nadwozia\":\"...\","
+        "\"liczba_drzwi\":\"...\",\"silnik_pojemnosc\":\"...\","
+        "\"silnik_moc\":\"...\",\"silnik_typ\":\"...\","
+        "\"paliwo\":\"...\",\"naped\":\"...\","
+        "\"skrzynia_biegow\":\"...\",\"fabryka\":\"...\","
+        "\"kraj_produkcji\":\"...\",\"numer_seryjny\":\"...\","
+        "\"uwagi\":\"...krótki opis po polsku\"}\n\n"
+        "Zasady: dekoduj VDS wg rzeczywistych tabel VIN tej marki i roku; "
+        "rok z poz.10 wg ISO 3779; dla EU VIN uzywaj europejskich tabel; "
+        "null jezeli nieznane."
+    )
+    html = f"""
+<!DOCTYPE html><html><head>
+<style>
+  body{{margin:0;padding:0;font-family:'DM Sans',system-ui,sans-serif;background:transparent;}}
+  #loading{{color:#7a8099;font-size:0.88rem;padding:0.5rem 0;}}
+  #loading span{{color:#e8c547;font-family:monospace;font-weight:700;}}
+  table{{width:100%;border-collapse:collapse;}}
+  td{{padding:11px 14px;border-bottom:1px solid #1e2130;vertical-align:middle;}}
+  td.lb{{font-family:monospace;font-size:0.65rem;letter-spacing:0.08em;color:#7a8099;text-transform:uppercase;width:42%;background:#171a22;}}
+  td.vb{{font-size:0.93rem;font-weight:500;color:#f0f2f8;background:#171a22;}}
+  .box{{background:#171a22;border:1px solid #2a2e3d;border-radius:12px;overflow:hidden;margin-bottom:0.8rem;}}
+  .ai-note{{background:#111520;border:1px solid #2a3050;border-radius:12px;padding:1rem 1.2rem;font-size:0.9rem;color:#d0d4e8;line-height:1.7;margin-top:0.5rem;}}
+  .ai-head{{font-family:monospace;font-size:0.65rem;color:#4da6ff;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.6rem;}}
+  .err{{color:#ff453a;background:rgba(255,69,58,0.1);border-radius:8px;padding:0.8rem;font-size:0.88rem;}}
+</style>
+</head><body>
+<div id="loading">⏳ Claude analizuje <span>{vin}</span>…</div>
+<div id="result"></div>
+<div id="err"></div>
+<script>
+const PROMPT = {json.dumps(prompt_text)};
+const LABELS = {{
+  marka:"🚗 Marka", model:"📋 Model", generacja:"🏷️ Generacja",
+  rok_modelowy:"📅 Rok modelowy", typ_nadwozia:"🚙 Typ nadwozia",
+  liczba_drzwi:"🚪 Liczba drzwi", silnik_pojemnosc:"⚙️ Pojemność silnika",
+  silnik_moc:"💪 Moc silnika", silnik_typ:"🔩 Typ silnika",
+  paliwo:"⛽ Paliwo", naped:"🔄 Napęd", skrzynia_biegow:"⚙️ Skrzynia biegów",
+  fabryka:"🏭 Fabryka", kraj_produkcji:"🌍 Kraj produkcji",
+  numer_seryjny:"🔢 Numer seryjny"
+}};
+(async()=>{{
+  try{{
+    const r = await fetch("https://api.anthropic.com/v1/messages",{{
+      method:"POST",
+      headers:{{"Content-Type":"application/json"}},
+      body:JSON.stringify({{
+        model:"claude-sonnet-4-20250514",
+        max_tokens:1000,
+        messages:[{{role:"user",content:PROMPT}}]
+      }})
+    }});
+    const d = await r.json();
+    let txt = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+    txt = txt.replace(/```[a-z]*/g,"").replace(/```/g,"").trim();
+    const obj = JSON.parse(txt);
+    let rows="";
+    for(const [k,lbl] of Object.entries(LABELS)){{
+      const v=obj[k];
+      if(v&&v!=="null"&&v!==null&&v!=="")
+        rows+=`<tr><td class="lb">${{lbl}}</td><td class="vb">${{v}}</td></tr>`;
+    }}
+    let html=`<div class="box"><table>${{rows}}</table></div>`;
+    if(obj.uwagi&&obj.uwagi!=="null"&&obj.uwagi!=="")
+      html+=`<div class="ai-note"><div class="ai-head">✦ Analiza AI</div>${{obj.uwagi}}</div>`;
+    document.getElementById("loading").style.display="none";
+    document.getElementById("result").innerHTML=html;
+  }}catch(e){{
+    document.getElementById("loading").style.display="none";
+    document.getElementById("err").innerHTML=`<div class="err">⚠ Błąd AI: ${{e.message}}</div>`;
+  }}
+}})();
+</script>
+</body></html>
+"""
+    components.html(html, height=600, scrolling=False)
 
-VIN: {vin}
-Znane dane: Producent={manufacturer}, Kraj={country}, Rok (przybliżony)={year_hint}
-
-Zwróć JSON z następującymi polami (wpisz null jeśli nieznane, nie zgaduj):
-{{
-  "marka": "...",
-  "model": "...",
-  "generacja": "...",
-  "rok_modelowy": "...",
-  "typ_nadwozia": "...",
-  "liczba_drzwi": "...",
-  "silnik_pojemnosc": "...",
-  "silnik_moc": "...",
-  "silnik_typ": "...",
-  "paliwo": "...",
-  "naped": "...",
-  "skrzynia_biegow": "...",
-  "fabryka": "...",
-  "kraj_produkcji": "...",
-  "numer_seryjny": "...",
-  "uwagi": "..."
-}}
-
-Zasady:
-- Dekoduj VDS (pozycje 4-9) zgodnie z rzeczywistymi tabelami kodów VIN dla tej marki i roku
-- Rok modelowy ustal na podstawie pozycji 10 VIN (standard ISO 3779)
-- Jeśli pozycja 10 to litera — podaj oba możliwe lata (np. 2003 lub 2033) i zaznacz który jest prawdopodobny
-- Jeśli VIN jest europejski i producent jest znany, użyj europejskich tabel kodów
-- W polu uwagi napisz po polsku co wiesz o tym konkretnym modelu na podstawie VIN"""
-
-    try:
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 1000,
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=30
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        # Wyciągnij tekst z odpowiedzi
-        text = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                text += block.get("text", "")
-
-        # Oczyść z markdown jeśli są
-        text = text.strip()
-        if text.startswith("```"):
-            text = re.sub(r"```[a-z]*\n?", "", text).strip().rstrip("`").strip()
-
-        result = json.loads(text)
-        return result
-
-    except Exception as e:
-        return None
 
 # ─────────────────────────────────────────────
 #  NHTSA API
@@ -580,51 +598,8 @@ if decode_btn:
 
             # ── Etap 3B: Claude AI dekodowanie
             st.markdown('<div class="section-label">Etap 3B — 🤖 Dekodowanie AI (Claude)</div>', unsafe_allow_html=True)
-            with st.spinner("Claude analizuje VIN i dekoduje szczegóły…"):
-                ai_result = decode_with_claude(vin, manufacturer, country_wmi, year_hint)
-
-            if ai_result:
-                st.markdown('<span class="badge badge-ai">✦ Dekodowanie AI zakończone</span>', unsafe_allow_html=True)
-
-                # Przefiltruj pola — pokaż tylko niepuste
-                display = {}
-                field_labels = {
-                    "marka": "🚗 Marka",
-                    "model": "📋 Model",
-                    "generacja": "🏷️ Generacja",
-                    "rok_modelowy": "📅 Rok modelowy",
-                    "typ_nadwozia": "🚙 Typ nadwozia",
-                    "liczba_drzwi": "🚪 Liczba drzwi",
-                    "silnik_pojemnosc": "⚙️ Pojemność silnika",
-                    "silnik_moc": "💪 Moc silnika",
-                    "silnik_typ": "🔩 Typ silnika",
-                    "paliwo": "⛽ Rodzaj paliwa",
-                    "naped": "🔄 Napęd",
-                    "skrzynia_biegow": "⚙️ Skrzynia biegów",
-                    "fabryka": "🏭 Fabryka",
-                    "kraj_produkcji": "🌍 Kraj produkcji",
-                    "numer_seryjny": "🔢 Numer seryjny",
-                }
-                for key, label in field_labels.items():
-                    val = ai_result.get(key)
-                    if val and val != "null" and val is not None:
-                        display[label] = val
-
-                if display:
-                    render_table(display)
-
-                # Uwagi AI
-                uwagi = ai_result.get("uwagi")
-                if uwagi and uwagi != "null" and uwagi is not None:
-                    st.markdown(f"""
-                    <div class="ai-box">
-                        <h4>✦ Analiza AI</h4>
-                        {uwagi}
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.markdown('<span class="badge badge-warn">⚠ AI niedostępne</span>', unsafe_allow_html=True)
-                st.warning("Nie udało się połączyć z Claude AI. Wyniki bazowe z WMI są powyżej.")
+            st.markdown('<span class="badge badge-ai">✦ Claude analizuje VIN…</span>', unsafe_allow_html=True)
+            render_ai_component(vin, manufacturer, country_wmi, year_hint)
 
             # ── Etap 3C: NHTSA (tylko USA/Kanada/Meksyk)
             is_usa = vin[0] in ('1', '2', '3', '4', '5')

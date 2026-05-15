@@ -2,10 +2,8 @@ import streamlit as st
 import requests
 import re
 import time
+import json
 
-# ─────────────────────────────────────────────
-#  PAGE CONFIG
-# ─────────────────────────────────────────────
 st.set_page_config(
     page_title="Dekoder VIN",
     page_icon="🔍",
@@ -13,9 +11,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────────
-#  CUSTOM CSS
-# ─────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -27,6 +22,7 @@ html, body, [class*="css"] {
 }
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding-top: 2.5rem; padding-bottom: 3rem; max-width: 820px; }
+
 .vin-hero { text-align: center; margin-bottom: 2.2rem; }
 .vin-hero h1 {
     font-family: 'Space Mono', monospace; font-size: 2.4rem; font-weight: 700;
@@ -57,7 +53,7 @@ html, body, [class*="css"] {
     border: none !important; border-radius: 10px !important;
     padding: 13px 30px !important; width: 100% !important; text-transform: uppercase !important;
 }
-.stButton > button:hover { background: #f5d55a !important; transform: translateY(-1px) !important; }
+.stButton > button:hover { background: #f5d55a !important; }
 
 .data-table { width: 100%; border-collapse: collapse; margin: 0; }
 .data-table tr { border-bottom: 1px solid #1e2130; }
@@ -65,16 +61,26 @@ html, body, [class*="css"] {
 .data-table td { padding: 12px 16px; vertical-align: middle; }
 .data-table td.dt-label {
     font-family: 'Space Mono', monospace; font-size: 0.7rem;
-    letter-spacing: 0.08em; color: #7a8099; text-transform: uppercase;
-    width: 42%; background: #171a22;
+    letter-spacing: 0.08em; color: #7a8099; text-transform: uppercase; width: 42%;
 }
-.data-table td.dt-value {
-    font-size: 0.97rem; font-weight: 500; color: #f0f2f8; background: #171a22;
-}
+.data-table td.dt-value { font-size: 0.97rem; font-weight: 500; color: #f0f2f8; }
 .dt-wrapper {
     background: #171a22; border: 1px solid #2a2e3d;
     border-radius: 12px; overflow: hidden; margin-bottom: 1.2rem;
 }
+
+.ai-box {
+    background: #111520; border: 1px solid #2a3050;
+    border-radius: 12px; padding: 1.4rem 1.6rem; margin-bottom: 1.2rem;
+    line-height: 1.7; font-size: 0.97rem; color: #d0d4e8;
+}
+.ai-box h4 {
+    font-family: 'Space Mono', monospace; font-size: 0.7rem;
+    color: #4da6ff; letter-spacing: 0.12em; text-transform: uppercase;
+    margin: 0 0 0.8rem 0;
+}
+.ai-section { margin-bottom: 1rem; }
+.ai-section strong { color: #e8c547; }
 
 .badge {
     display: inline-block; padding: 5px 14px; border-radius: 20px;
@@ -84,6 +90,7 @@ html, body, [class*="css"] {
 .badge-warn { background: rgba(255,204,0,0.15);  color: #ffc400; border: 1px solid rgba(255,204,0,0.3); }
 .badge-err  { background: rgba(255,69,58,0.15);  color: #ff453a; border: 1px solid rgba(255,69,58,0.3); }
 .badge-info { background: rgba(10,132,255,0.15); color: #0a84ff; border: 1px solid rgba(10,132,255,0.3); }
+.badge-ai   { background: rgba(180,100,255,0.15); color: #b464ff; border: 1px solid rgba(180,100,255,0.3); }
 
 .section-label {
     font-family: 'Space Mono', monospace; font-size: 0.72rem;
@@ -120,6 +127,7 @@ html, body, [class*="css"] {
 }
 hr.vin-divider { border: none; border-top: 1px solid #2a2e3d; margin: 1.5rem 0; }
 .stAlert { border-radius: 10px !important; }
+.stSpinner > div { color: #e8c547 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -129,7 +137,7 @@ hr.vin-divider { border: none; border-top: 1px solid #2a2e3d; margin: 1.5rem 0; 
 st.markdown("""
 <div class="vin-hero">
     <h1>🔍 Dekoder <span class="accent">VIN</span></h1>
-    <p>Walidacja · Suma kontrolna · Dekodowanie globalne (Europa + USA + świat)</p>
+    <p>Walidacja · Suma kontrolna · AI Dekodowanie (Europa + USA + świat)</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -137,7 +145,7 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 # ─────────────────────────────────────────────
-#  BAZA WMI (200+ wpisów)
+#  BAZA WMI
 # ─────────────────────────────────────────────
 WMI_DB = {
     "WBA": ("BMW",                 "Niemcy"),
@@ -148,34 +156,32 @@ WMI_DB = {
     "WDD": ("Mercedes-Benz",       "Niemcy"),
     "WDF": ("Mercedes-Benz Van",   "Niemcy"),
     "WME": ("Smart",               "Niemcy"),
+    "WMW": ("MINI",                "Niemcy"),
+    "WMX": ("Mercedes-AMG",        "Niemcy"),
     "WVW": ("Volkswagen",          "Niemcy"),
     "WV1": ("Volkswagen LCV",      "Niemcy"),
     "WV2": ("Volkswagen Bus",      "Niemcy"),
+    "WVG": ("Volkswagen SUV/MPV",  "Niemcy"),
     "WAU": ("Audi",                "Niemcy"),
     "WA1": ("Audi SUV",            "Niemcy"),
     "WP0": ("Porsche",             "Niemcy"),
     "WP1": ("Porsche Cayenne",     "Niemcy"),
     "WUA": ("Audi Sport",          "Niemcy"),
     "W0L": ("Opel",                "Niemcy"),
-    "WOL": ("Opel",                "Niemcy"),
-    "VSS": ("SEAT (DE)",           "Niemcy"),
-    "SAJ": ("Jaguar (DE)",         "Niemcy"),
-    "WF0": ("Ford (Niemcy)",        "Niemcy"),
-    "WF1": ("Ford (Niemcy)",        "Niemcy"),
-    "WF2": ("Ford (Niemcy)",        "Niemcy"),
-    "WMA": ("MAN Trucks",           "Niemcy"),
-    "WMW": ("MINI",                 "Niemcy"),
-    "WMX": ("Mercedes-AMG",         "Niemcy"),
-    "WVG": ("Volkswagen SUV/MPV",   "Niemcy"),
-    "W0V": ("Opel/Vauxhall",        "Niemcy"),
+    "W0V": ("Opel/Vauxhall",       "Niemcy"),
+    "WF0": ("Ford (Niemcy)",       "Niemcy"),
+    "WF1": ("Ford (Niemcy)",       "Niemcy"),
+    "WMA": ("MAN Trucks",          "Niemcy"),
     "SAL": ("Land Rover",          "Wielka Brytania"),
     "SAR": ("Rover",               "Wielka Brytania"),
     "SCB": ("Bentley",             "Wielka Brytania"),
     "SCC": ("Lotus",               "Wielka Brytania"),
     "SDB": ("Aston Martin",        "Wielka Brytania"),
-    "SFD": ("Alexander Dennis",    "Wielka Brytania"),
-    "SHH": ("Honda (UK)",          "Wielka Brytania"),
+    "SCF": ("Aston Martin",        "Wielka Brytania"),
+    "SAJ": ("Jaguar",              "Wielka Brytania"),
     "SUF": ("Jaguar",              "Wielka Brytania"),
+    "SHH": ("Honda (UK)",          "Wielka Brytania"),
+    "SCA": ("Rolls-Royce",         "Wielka Brytania"),
     "VF1": ("Renault",             "Francja"),
     "VF2": ("Renault",             "Francja"),
     "VF3": ("Peugeot",             "Francja"),
@@ -183,54 +189,27 @@ WMI_DB = {
     "VF7": ("Citroën",             "Francja"),
     "VF8": ("Citroën",             "Francja"),
     "VFA": ("Renault",             "Francja"),
-    "VFB": ("Citroën",             "Francja"),
     "VFE": ("Peugeot",             "Francja"),
     "ZAR": ("Alfa Romeo",          "Włochy"),
-    "ZAS": ("Alfa Romeo",          "Włochy"),
-    "ZCF": ("Iveco",               "Włochy"),
     "ZFF": ("Ferrari",             "Włochy"),
     "ZGA": ("Lamborghini",         "Włochy"),
     "ZHW": ("Lamborghini",         "Włochy"),
     "ZLA": ("Lancia",              "Włochy"),
     "ZFA": ("Fiat",                "Włochy"),
-    "ZFC": ("Fiat",                "Włochy"),
-    "ZFE": ("Fiat",                "Włochy"),
+    "ZCF": ("Iveco",               "Włochy"),
     "TMB": ("Škoda",               "Czechy"),
     "TMA": ("Škoda",               "Czechy"),
     "TMC": ("Škoda",               "Czechy"),
-    "TM9": ("Škoda",               "Czechy"),
     "VSA": ("SEAT",                "Słowacja"),
-    "VSB": ("SEAT",                "Słowacja"),
-    "VSC": ("SEAT",                "Słowacja"),
-    "VSD": ("SEAT",                "Słowacja"),
     "VS6": ("SEAT",                "Hiszpania"),
-    "VS7": ("SEAT",                "Hiszpania"),
     "VSX": ("Volkswagen (ES)",     "Hiszpania"),
     "YS2": ("Scania",              "Szwecja"),
     "YS3": ("Saab",                "Szwecja"),
     "YV1": ("Volvo Cars",          "Szwecja"),
     "YV4": ("Volvo Cars",          "Szwecja"),
-    "YVF": ("Volvo Trucks",        "Szwecja"),
     "YK1": ("Koenigsegg",          "Szwecja"),
     "XTA": ("AvtoVAZ / Łada",      "Rosja"),
-    "XLB": ("Volvo (NedCar)",       "Holandia"),
-    "XLE": ("Scania (NL)",          "Holandia"),
-    "XLR": ("DAF Trucks",           "Holandia"),
-    "XMC": ("Mitsubishi (NedCar)",  "Holandia"),
-    "YBW": ("Volkswagen (Belgia)",  "Belgia"),
-    "YCM": ("Mazda (Belgia)",       "Belgia"),
-    "YE2": ("Van Hool (busy)",      "Belgia"),
-    "MAJ": ("Ford (Indie)",         "Indie"),
-    "LVS": ("Ford (Chiny)",         "Chiny"),
-    "SAA": ("Jaguar",               "Wielka Brytania"),
-    "SAB": ("Land Rover",           "Wielka Brytania"),
-    "SCA": ("Rolls-Royce",          "Wielka Brytania"),
-    "SCF": ("Aston Martin",         "Wielka Brytania"),
-    "SED": ("General Motors (UK)",  "Wielka Brytania"),
-    "VNE": ("Toyota (UK)",          "Wielka Brytania"),
-    "ABK": ("Aston Martin",         "Wielka Brytania"),
     "XTT": ("GAZ",                 "Rosja"),
-    "XUF": ("UAZ",                 "Rosja"),
     "JHM": ("Honda",               "Japonia"),
     "JH4": ("Acura",               "Japonia"),
     "JN1": ("Nissan",              "Japonia"),
@@ -238,48 +217,30 @@ WMI_DB = {
     "JF1": ("Subaru",              "Japonia"),
     "JF2": ("Subaru",              "Japonia"),
     "JT2": ("Toyota",              "Japonia"),
-    "JT3": ("Toyota 4WD",          "Japonia"),
     "JT6": ("Lexus",               "Japonia"),
-    "JT8": ("Lexus",               "Japonia"),
     "JTD": ("Toyota",              "Japonia"),
     "JTJ": ("Lexus",               "Japonia"),
-    "JTM": ("Toyota RAV4",         "Japonia"),
-    "JAA": ("Isuzu",               "Japonia"),
     "JA3": ("Mitsubishi",          "Japonia"),
-    "JA4": ("Mitsubishi SUV",      "Japonia"),
     "JMB": ("Mitsubishi",          "Japonia"),
     "JS1": ("Suzuki",              "Japonia"),
-    "JS2": ("Suzuki",              "Japonia"),
-    "JSK": ("Kawasaki",            "Japonia"),
-    "JSB": ("Honda Moto",          "Japonia"),
     "JYA": ("Yamaha",              "Japonia"),
-    "JL5": ("Mazda",               "Japonia"),
     "JM1": ("Mazda",               "Japonia"),
     "JM3": ("Mazda CX",            "Japonia"),
     "KMH": ("Hyundai",             "Korea Płd."),
-    "KMT": ("Hyundai",             "Korea Płd."),
     "KNA": ("Kia",                 "Korea Płd."),
     "KND": ("Kia",                 "Korea Płd."),
     "KPA": ("SsangYong",           "Korea Płd."),
-    "KLA": ("GM Korea",            "Korea Płd."),
-    "KL4": ("Daewoo",              "Korea Płd."),
     "LFV": ("Volkswagen (CN)",     "Chiny"),
-    "LGX": ("Buick (CN)",          "Chiny"),
     "LHG": ("Honda (CN)",          "Chiny"),
-    "LJC": ("Chery",               "Chiny"),
     "LSG": ("GM Shanghai",         "Chiny"),
     "LSJ": ("MG / SAIC",           "Chiny"),
     "LYV": ("Volvo (CN)",          "Chiny"),
     "LB1": ("BYD",                 "Chiny"),
-    "LB2": ("BYD",                 "Chiny"),
     "LBD": ("BYD",                 "Chiny"),
     "1FA": ("Ford",                "USA"),
     "1FB": ("Ford",                "USA"),
-    "1FC": ("Ford",                "USA"),
-    "1FD": ("Ford Truck",          "USA"),
     "1FM": ("Ford SUV",            "USA"),
     "1FT": ("Ford Truck",          "USA"),
-    "1FU": ("Freightliner",        "USA"),
     "1G1": ("Chevrolet",           "USA"),
     "1G6": ("Cadillac",            "USA"),
     "1GC": ("Chevrolet Truck",     "USA"),
@@ -294,43 +255,25 @@ WMI_DB = {
     "1C6": ("Ram Truck",           "USA"),
     "1D3": ("Dodge",               "USA"),
     "1D4": ("Dodge / RAM",         "USA"),
-    "1D7": ("Dodge Ram",           "USA"),
-    "1B3": ("Dodge",               "USA"),
-    "1B4": ("Dodge",               "USA"),
     "1N4": ("Nissan (USA)",        "USA"),
     "1N6": ("Nissan Truck",        "USA"),
     "1T2": ("Toyota (USA)",        "USA"),
     "1VW": ("Volkswagen (USA)",    "USA"),
-    "2FA": ("Ford (Kanada)",       "Kanada"),
-    "2FT": ("Ford Truck (CA)",     "Kanada"),
-    "2G1": ("Chevrolet (CA)",      "Kanada"),
     "2HG": ("Honda (CA)",          "Kanada"),
-    "2HK": ("Honda CR-V (CA)",     "Kanada"),
     "2T1": ("Toyota (CA)",         "Kanada"),
-    "2T2": ("Lexus (CA)",          "Kanada"),
     "3FA": ("Ford (Meksyk)",       "Meksyk"),
-    "3G1": ("Chevrolet (MX)",      "Meksyk"),
-    "3HG": ("Honda (MX)",          "Meksyk"),
     "3N1": ("Nissan (MX)",         "Meksyk"),
     "3VW": ("Volkswagen (MX)",     "Meksyk"),
     "4JG": ("Mercedes-Benz (USA)", "USA"),
     "4S3": ("Subaru (USA)",        "USA"),
-    "4S4": ("Subaru (USA)",        "USA"),
     "4T1": ("Toyota (USA)",        "USA"),
-    "4T3": ("Toyota (USA)",        "USA"),
     "4US": ("BMW (USA)",           "USA"),
-    "5FN": ("Honda Pilot (USA)",   "USA"),
-    "5J6": ("Honda (USA)",         "USA"),
-    "5J8": ("Acura (USA)",         "USA"),
     "5N1": ("Nissan (USA)",        "USA"),
     "5NP": ("Hyundai (USA)",       "USA"),
-    "5TD": ("Toyota Sienna",       "USA"),
-    "5TF": ("Toyota Tundra",       "USA"),
     "5UX": ("BMW X (USA)",         "USA"),
     "5XY": ("Kia (USA)",           "USA"),
-    "5YF": ("Tesla",               "USA"),
     "5YJ": ("Tesla",               "USA"),
-    "7FB": ("Toyota (USA)",        "USA"),
+    "5YF": ("Tesla",               "USA"),
 }
 
 COUNTRY_MAP = {
@@ -340,32 +283,57 @@ COUNTRY_MAP = {
     '8': 'Argentyna', '9': 'Brazylia',
     'J': 'Japonia', 'K': 'Korea Płd.',
     'L': 'Chiny', 'M': 'Indie',
-    'N': 'Holandia',
-    'P': 'Filipiny', 'R': 'Tajwan',
-    'S': 'Wielka Brytania',
-    'T': 'Czechy / Szwajcaria',
-    'U': 'Rumunia',
-    'V': 'Francja / Austria',
-    'W': 'Niemcy',
+    'N': 'Holandia', 'P': 'Filipiny',
+    'R': 'Tajwan', 'S': 'Wielka Brytania',
+    'T': 'Czechy / Szwajcaria', 'U': 'Rumunia',
+    'V': 'Francja / Austria', 'W': 'Niemcy',
     'X': 'Rosja / kraje bałtyckie',
     'Y': 'Belgia / Finlandia / Szwecja',
     'Z': 'Włochy',
 }
 
 MODEL_YEAR_MAP = {
-    'A': '1980 lub 2010', 'B': '1981 lub 2011', 'C': '1982 lub 2012',
-    'D': '1983 lub 2013', 'E': '1984 lub 2014', 'F': '1985 lub 2015',
-    'G': '1986 lub 2016', 'H': '1987 lub 2017', 'J': '1988 lub 2018',
-    'K': '1989 lub 2019', 'L': '1990 lub 2020', 'M': '1991 lub 2021',
-    'N': '1992 lub 2022', 'P': '1993 lub 2023', 'R': '1994 lub 2024',
-    'S': '1995 lub 2025', 'T': '1996 lub 2026', 'V': '1997',
-    'W': '1998', 'X': '1999', 'Y': '2000',
-    '1': '2001', '2': '2002', '3': '2003', '4': '2004', '5': '2005',
-    '6': '2006', '7': '2007', '8': '2008', '9': '2009',
+    '1': 2001, '2': 2002, '3': 2003, '4': 2004, '5': 2005,
+    '6': 2006, '7': 2007, '8': 2008, '9': 2009,
+    'A': None, 'B': None, 'C': None, 'D': None, 'E': None,
+    'F': None, 'G': None, 'H': None, 'J': None, 'K': None,
+    'L': None, 'M': None, 'N': None, 'P': None, 'R': None,
+    'S': None, 'T': None, 'V': None, 'W': None, 'X': None, 'Y': None,
+}
+LETTER_YEARS = {
+    'A': (1980, 2010), 'B': (1981, 2011), 'C': (1982, 2012),
+    'D': (1983, 2013), 'E': (1984, 2014), 'F': (1985, 2015),
+    'G': (1986, 2016), 'H': (1987, 2017), 'J': (1988, 2018),
+    'K': (1989, 2019), 'L': (1990, 2020), 'M': (1991, 2021),
+    'N': (1992, 2022), 'P': (1993, 2023), 'R': (1994, 2024),
+    'S': (1995, 2025), 'T': (1996, 2026), 'V': (1997, 2027),
+    'W': (1998, 2028), 'X': (1999, 2029), 'Y': (2000, 2030),
 }
 
+def get_year_str(vin: str) -> str:
+    ch = vin[9]
+    if ch == '0':
+        return "ok. 2019–2020 (niestandardowy)"
+    if ch in MODEL_YEAR_MAP and isinstance(MODEL_YEAR_MAP[ch], int):
+        return str(MODEL_YEAR_MAP[ch])
+    if ch in LETTER_YEARS:
+        y1, y2 = LETTER_YEARS[ch]
+        # heurystyka: WMI nowsze niż 2000 → bierz y2
+        wmi = vin[:3]
+        new_only = {"WF0","WF1","5YJ","5YF","LB1","LBD","YK1","WMW","WMX"}
+        if wmi in new_only:
+            return str(y2)
+        try:
+            serial = int(vin[11:17])
+            if serial > 80000 and y2 <= 2026:
+                return f"{y2} (prawdopodobnie)"
+        except:
+            pass
+        return f"{y1} lub {y2}"
+    return "Nieznany"
+
 # ─────────────────────────────────────────────
-#  FUNKCJE
+#  WALIDACJA I SUMA KONTROLNA
 # ─────────────────────────────────────────────
 def validate_vin(raw: str) -> tuple[bool, str, str]:
     vin = raw.strip().upper().replace(" ", "").replace("-", "")
@@ -375,9 +343,9 @@ def validate_vin(raw: str) -> tuple[bool, str, str]:
         return False, vin, f"VIN musi mieć dokładnie 17 znaków (podano: {len(vin)})."
     found = [c for c in vin if c in "IOQ"]
     if found:
-        return False, vin, f"VIN zawiera niedozwolone znaki: {', '.join(sorted(set(found)))} (litery I, O, Q są zabronione w standardzie VIN)."
+        return False, vin, f"VIN zawiera niedozwolone znaki: {', '.join(sorted(set(found)))}."
     if not re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", vin):
-        return False, vin, "VIN zawiera niedozwolone znaki. Dozwolone: cyfry 0–9 oraz litery A–Z (bez I, O, Q)."
+        return False, vin, "VIN zawiera niedozwolone znaki (dozwolone: A–Z bez I/O/Q, cyfry 0–9)."
     return True, vin, ""
 
 TRANSLITERATION = {
@@ -394,440 +362,140 @@ def checksum_verify(vin: str) -> tuple[bool, str, str]:
     expected = 'X' if remainder == 10 else str(remainder)
     return expected == vin[8], expected, vin[8]
 
-# ─── VDS dekoderzy dla konkretnych marek ───────────────────────
-# Ford Europa (WF0): pozycja 4 = typ nadwozia
-FORD_EU_BODY = {
-    'A': 'Sedan 5-drzwiowy', 'B': 'Sedan 3-drzwiowy', 'C': 'Cabrio',
-    'D': 'Kombi 2-drzwiowe', 'E': 'Sedan 3-drzwiowy (hatchback)',
-    'F': 'Sedan 4-drzwiowy', 'G': 'Kombi / Estate 5-drzwiowe',
-    'H': 'SUV / Crossover', 'K': 'Coupe', 'M': 'Minivan / MPV',
-    'N': 'Kombi 4/5-drzwiowe', 'P': 'Pick-up', 'S': 'Kombi/Bus',
-    'T': 'Van', 'V': 'Van', 'W': 'Kombi 5-drzwiowe',
-}
-# Ford Europa: pozycja 8 = silnik (przybliżone)
-FORD_EU_ENGINE = {
-    'A': 'Benzyna 1.0 EcoBoost', 'B': 'Benzyna 1.4',
-    'C': 'Benzyna 1.6', 'D': 'Diesel 1.5 TDCi',
-    'E': 'Benzyna 1.5 EcoBoost', 'F': 'Benzyna 1.6 EcoBoost',
-    'G': 'Benzyna 2.0 / Diesel 2.0 TDCi',
-    'H': 'Benzyna 2.3 EcoBoost', 'J': 'Diesel 1.6 TDCi',
-    'K': 'Diesel 2.0 TDCi 115KM', 'L': 'Diesel 2.0 TDCi 140KM',
-    'M': 'Diesel 2.0 TDCi 163KM', 'N': 'Benzyna 1.5',
-    'P': 'Diesel 1.5 TDCi', 'R': 'Benzyna 2.5 Turbo (RS)',
-    'S': 'Diesel 1.8 TDCi', 'T': 'Benzyna 2.0 Ti-VCT',
-    'U': 'Benzyna 1.0 EcoBoost 100KM', 'V': 'Benzyna 1.5 EcoBoost 182KM',
-    'W': 'Diesel 2.0 TDCi 180KM', 'X': 'Elektryczny',
-    'Y': 'Benzyna 1.6 Ti-VCT', 'Z': 'Benzyna 2.0 GDi',
-    '2': 'Benzyna 1.6', '5': 'Benzyna 2.0 DOHC',
-    '8': 'Diesel 1.8 TDDI',
-}
-
-# VW/Audi/Skoda/SEAT: pozycja 4 = model/segment
-VW_MODEL = {
-    'A': 'Polo / A1', 'B': 'Golf / A3 / Octavia',
-    'C': 'Passat / A4 / Superb', 'D': 'Phaeton / A8 / A6',
-    'E': 'Touareg / Q7 / Cayenne', 'F': 'Tiguan / Q5 / Yeti',
-    'G': 'Touran / Sharan', 'H': 'T-Roc / Q2',
-    'J': 'Jetta', 'K': 'Arteon / A5',
-    'L': 'Caddy', 'M': 'T5 / T6 Transporter',
-    'T': 'Touareg II', 'Z': 'ID.3 / ID.4 (EV)',
-}
-# VW pozycja 5+6 = silnik (przybliżone)
-VW_ENGINE_POS8 = {
-    'A': 'Benzyna 1.0 MPI', 'B': 'Benzyna 1.2 TSI',
-    'C': 'Benzyna 1.4 TSI', 'D': 'Benzyna 1.6 MPI',
-    'E': 'Benzyna 2.0 TSI', 'F': 'Diesel 1.6 TDI',
-    'G': 'Diesel 2.0 TDI 150KM', 'H': 'Diesel 2.0 TDI 184KM',
-    'J': 'Benzyna 1.8 TSI', 'K': 'Diesel 2.0 TDI 110KM',
-    'L': 'Benzyna 1.5 TSI', 'M': 'Diesel 3.0 TDI V6',
-    'N': 'Benzyna 2.5 R5', 'P': 'Benzyna 3.6 V6',
-    'R': 'Benzyna 4.0 V8 (Porsche)', 'S': 'Benzyna 1.4 TSI 125KM',
-    'T': 'Benzyna 2.0 TFSI', 'U': 'Benzyna 1.0 eTSI',
-    'V': 'Elektryczny (MEB)', 'W': 'Diesel 1.9 TDI',
-    'X': 'Benzyna 1.4 TGI (CNG)', 'Y': 'Hybryd plug-in',
-}
-
-# BMW: pozycja 4+5 = seria/model (poz. 4 to główny identyfikator)
-BMW_MODEL = {
-    # Seria 1
-    'E': 'Seria 1 (E87/E81/F20/F40)',
-    # Seria 2
-    'F': 'Seria 2 / Active Tourer (F22/F45/F46)',
-    # Seria 3
-    'A': 'Seria 3 (E46/E90/F30/G20)',
-    # Seria 4
-    'B': 'Seria 4 (F32/F36/G22)',
-    # Seria 5
-    'C': 'Seria 5 (E60/F10/G30)',
-    # Seria 6
-    'D': 'Seria 6 (E63/F12/G32)',
-    # Seria 7
-    'G': 'Seria 7 (E65/F01/G11)',
-    # Seria 8
-    'H': 'Seria 8 (G14/G15)',
-    # X modele
-    'J': 'X1 (E84/F48/U11)',
-    'K': 'X3 (E83/F25/G01)',
-    'L': 'X4 (F26/G02)',
-    'M': 'X5 (E53/E70/F15/G05)',
-    'N': 'X6 (E71/F16/G06)',
-    'P': 'X7 (G07)',
-    'R': 'X2 (F39)',
-    'S': 'Z4 (E85/E89/G29)',
-    'T': 'Z3',
-    'U': 'i3 / iX3',
-    'V': 'i4 / iX',
-    'W': 'M3 / M4 / M5',
-    'X': 'M6 / M8',
-    'Y': 'X2 (F39) / X1',
-    'Z': 'Seria 4 Gran Coupe / i8',
-}
-
-# BMW poz. 5 = dodatkowy identyfikator modelu
-BMW_MODEL2 = {
-    'A': 'Sedan',
-    'B': 'Coupe',
-    'C': 'Cabrio / Convertible',
-    'D': 'Gran Coupe / 4-dr coupe',
-    'E': 'Touring / Kombi',
-    'F': 'Gran Turismo',
-    'G': 'xDrive (AWD)',
-    'H': 'sDrive (FWD/RWD)',
-    'J': 'Active Tourer',
-    'K': 'Gran Tourer',
-    'L': 'Limuzyna długa (L)',
-    'M': 'M Performance',
-    'N': 'xDrive SUV',
-    'P': 'SAV / SUV',
-    'R': 'Roadster',
-    'S': 'Sport',
-    'T': 'Sport Line',
-    'U': 'M Sport',
-    'V': 'Advantage',
-    'W': 'Luxury',
-    'X': 'xDrive',
-    'Y': 'sDrive',
-    'Z': 'Elektryczny (BEV)',
-}
-
-# BMW poz. 8 = silnik
-BMW_ENGINE = {
-    'A': 'Benzyna 1.5 3-cyl (B38)',
-    'B': 'Benzyna 2.0 4-cyl (B48)',
-    'C': 'Benzyna 3.0 6-cyl (B58)',
-    'D': 'Benzyna 4.4 V8 (N63/S63)',
-    'E': 'Diesel 2.0 4-cyl (B47)',
-    'F': 'Diesel 3.0 6-cyl (B57)',
-    'G': 'Diesel 4.4 V8',
-    'H': 'Benzyna 1.5 Hybrid (B38)',
-    'J': 'Benzyna 2.0 Hybrid (B48e)',
-    'K': 'Benzyna 3.0 M (S55/S58)',
-    'L': 'Benzyna 4.4 M (S63)',
-    'M': 'Elektryczny (BMW i)',
-    'N': 'Benzyna 1.6 4-cyl',
-    'P': 'Benzyna 2.0 N20/N26',
-    'R': 'Diesel 2.0 N47',
-    'S': 'Diesel 3.0 N57',
-    'T': 'Benzyna 4.4 N63',
-    'U': 'Benzyna 3.0 N55',
-    'V': 'Benzyna 2.0 N46',
-    'W': 'Benzyna 1.6 N13',
-    'X': 'Benzyna 2.0 N43',
-    'Y': 'Benzyna 1.5 B38 (X2 118i)',
-    'Z': 'Plug-in Hybrid',
-    '0': 'Benzyna 1.5 B38 / specjalny',
-    '1': 'Benzyna 1.5 3-cyl',
-    '3': 'Benzyna 2.0 turbo',
-    '5': 'Diesel 2.0',
-}
-
-# BMW fabryki (poz. 11)
-BMW_PLANT = {
-    'A': 'Dingolfing, Niemcy (Seria 5/6/7/8)',
-    'B': 'Monachium, Niemcy (Seria 3)',
-    'C': 'Regensburg, Niemcy (Seria 1/3/4)',
-    'D': 'Leipzig, Niemcy (Seria 1/2/i3)',
-    'E': 'Eisenach, Niemcy',
-    'G': 'Graz, Austria (Magna Steyr — Z4/Supra)',
-    'J': 'Spartanburg, USA (X3/X4/X5/X6/X7)',
-    'K': 'Oxford, UK (MINI)',
-    'L': 'Landshut, Niemcy',
-    'M': 'Monachium, Niemcy',
-    'N': 'Nedcar, Holandia (X1/X2)',
-    'P': 'Plant Rosslyn, RPA',
-    'R': 'Regensburg, Niemcy',
-    'S': 'Spartanburg, USA',
-    'T': 'Shenyang, Chiny (BMW Brilliance)',
-    'U': 'San Luis Potosí, Meksyk (Seria 3)',
-    'V': 'Chennai, Indie',
-    'W': 'Wackersdorf, Niemcy',
-    'X': 'Shenyang 2, Chiny',
-    'Y': 'Калининград (AvtoTor), Rosja',
-    'Z': 'Graz, Austria',
-    '0': 'Nedcar, Holandia (X1/X2/F39)',
-    '5': 'Nedcar, Holandia (X1/X2 F39)',
-    '6': 'Shenyang, Chiny',
-    '7': 'San Luis Potosí, Meksyk',
-    '8': 'Spartanburg, USA',
-}
-
-# Fabryki Forda w Europie (poz. 11)
-FORD_EU_PLANT = {
-    'A': 'Valencia, Hiszpania',
-    'B': 'Saarlouis, Niemcy',
-    'C': 'Gölcük, Turcja',
-    'D': 'Düsseldorf, Niemcy',
-    'E': 'Genk, Belgia',
-    'F': 'Fiesta (Köln), Niemcy',
-    'G': 'Gent, Belgia',
-    'H': 'Halewood, Wielka Brytania',
-    'K': 'Kocaeli, Turcja',
-    'M': 'Moskwa / Cuautitlan',
-    'N': 'Niehl, Köln (Niemcy)',
-    'S': 'Saarlouis, Niemcy',
-    'T': 'Transit (Southampton/Turkey)',
-    'V': 'Valencia, Hiszpania',
-    'W': 'Wayne, Michigan (USA)',
-}
-
-# Fabryki VW Group (poz. 11)
-VW_PLANT = {
-    'A': 'Ingolstadt (Audi)',
-    'B': 'Bratysława (Słowacja)',
-    'C': 'Chattanooga, USA',
-    'D': 'Wolfsburg (VW)',
-    'E': 'Emden (VW)',
-    'G': 'Graz, Austria (Magna)',
-    'H': 'Hannover (VW)',
-    'K': 'Osnabrück (VW)',
-    'M': 'Mladá Boleslav (Škoda)',
-    'N': 'Neckarsulm (Audi)',
-    'P': 'Pamplona (VW)',
-    'S': 'Stuttgart (Porsche)',
-    'T': 'Türkiye (VW)',
-    'W': 'Wilhelmsburg / Wiedeń',
-    'X': 'Martorell (SEAT)',
-    'Z': 'Zwickau (VW EV)',
-}
-
-def decode_vds_ford_eu(vin: str) -> dict:
-    """Dekoduje VDS dla Forda Europa (WF0)."""
-    result = {}
-    body = FORD_EU_BODY.get(vin[3], None)
-    if body:
-        result["Typ nadwozia (VDS poz. 4)"] = body
-    engine = FORD_EU_ENGINE.get(vin[7], None)
-    if engine:
-        result["Silnik (VDS poz. 8)"] = engine
-    plant = FORD_EU_PLANT.get(vin[10], None)
-    if plant:
-        result["Fabryka (poz. 11)"] = plant
-    return result
-
-def decode_vds_vw_group(vin: str) -> dict:
-    """Dekoduje VDS dla grupy VW (WAU, WVW, TMB, VSS...)."""
-    result = {}
-    model = VW_MODEL.get(vin[3], None)
-    if model:
-        result["Model/Segment (VDS poz. 4)"] = model
-    engine = VW_ENGINE_POS8.get(vin[7], None)
-    if engine:
-        result["Silnik (VDS poz. 8)"] = engine
-    plant = VW_PLANT.get(vin[10], None)
-    if plant:
-        result["Fabryka (poz. 11)"] = plant
-    return result
-
-def decode_vds_bmw(vin: str) -> dict:
-    """Dekoduje VDS dla BMW."""
-    result = {}
-    model = BMW_MODEL.get(vin[3], None)
-    if model:
-        result["Model/Seria BMW (poz. 4)"] = model
-    body = BMW_MODEL2.get(vin[4], None)
-    if body:
-        result["Typ nadwozia BMW (poz. 5)"] = body
-    engine = BMW_ENGINE.get(vin[7], None)
-    if engine:
-        result["Silnik BMW (poz. 8)"] = engine
-    plant = BMW_PLANT.get(vin[10], None)
-    if plant:
-        result["Fabryka BMW (poz. 11)"] = plant
-    return result
-
-def smart_model_year(vin: str, wmi: str) -> str:
-    """
-    Inteligentnie ustala rok modelowy.
-    Jeśli WMI jest znane i aktywne po 2000 r., eliminuje starszy cykl.
-    """
-    year_char = vin[9]
-    # Znaki cyfr 1-9 są jednoznaczne (2001-2009)
-    UNAMBIGUOUS = {'1':2001,'2':2002,'3':2003,'4':2004,'5':2005,
-                   '6':2006,'7':2007,'8':2008,'9':2009}
-    if year_char in UNAMBIGUOUS:
-        return str(UNAMBIGUOUS[year_char])
-
-    # Litery — cykl powtarza się: A=1980/2010, B=1981/2011...
-    LETTER_OFFSET = {
-        'A':0,'B':1,'C':2,'D':3,'E':4,'F':5,'G':6,'H':7,
-        'J':8,'K':9,'L':10,'M':11,'N':12,'P':13,'R':14,
-        'S':15,'T':16,'V':17,'W':18,'X':19,'Y':20
-    }
-    # '0' używane przez BMW i innych dla lat ~2019-2020 (niestandardowe)
-    if year_char == '0':
-        return "ok. 2019–2020 (kod niestandardowy)"
-    if year_char not in LETTER_OFFSET:
-        return "Nieznany"
-
-    offset = LETTER_OFFSET[year_char]
-    year_old = 1980 + offset
-    year_new = 2010 + offset
-
-    # Producenci którzy istnieją tylko od określonego roku
-    MODERN_ONLY = {
-        # WMI: min rok produkcji
-        "WF0": 1993, "WVW": 1975, "WAU": 1985, "WBA": 1975,
-        "WDB": 1975, "TMB": 1991, "5YJ": 2012, "5YF": 2012,
-        "YV1": 1975, "YV4": 2002, "YK1": 2009,
-    }
-    min_year = MODERN_ONLY.get(wmi, 0)
-
-    # Jeśli stary rok jest przed minimum producenta, wybierz nowy
-    if year_old < min_year:
-        return str(year_new) if year_new <= 2026 else str(year_old)
-
-    # Heurystyka: jeśli numer seryjny jest duży (>100000), to nowsze auto
-    try:
-        serial = int(vin[11:17])
-        if serial > 100000 and year_new <= 2026:
-            return f"{year_new} (prawdopodobnie)"
-    except:
-        pass
-
-    # Nie da się jednoznacznie ustalić
-    if year_new <= 2026:
-        return f"{year_old} lub {year_new}"
-    return str(year_old)
-
-# Handle '0' — niestandardowy kod używany przez niektórych producentów
-# (BMW od ~2019 używa '0' dla niektórych modeli = rok 2019/2020)
-
-def decode_vin_manual(vin: str) -> dict:
-    result = {}
-    wmi = vin[:3]
-
-    country = COUNTRY_MAP.get(vin[0], "Nieznany region")
-    result["🌍 Kraj produkcji"] = country
-
-    manufacturer = None
-    if wmi in WMI_DB:
-        manufacturer, country_wmi = WMI_DB[wmi]
-        result["🏭 Producent"] = manufacturer
-        result["📍 Kraj producenta"] = country_wmi
-    else:
-        result["🏭 Kod WMI (producent)"] = wmi
-
-    # Inteligentny rok modelowy
-    year_str = smart_model_year(vin, wmi)
-    result["📅 Rok modelowy"] = year_str
-
-    # Dekodowanie VDS zależnie od producenta
-    vds_data = {}
-    if wmi in ("WF0", "WF1", "WF2"):
-        vds_data = decode_vds_ford_eu(vin)
-    elif wmi in ("WVW", "WAU", "WA1", "WP0", "WP1", "TMB", "TMA",
-                 "VSS", "VSA", "VSB", "VSC", "VSD", "VS6"):
-        vds_data = decode_vds_vw_group(vin)
-    elif wmi in ("WBA", "WBS", "WBY"):
-        vds_data = decode_vds_bmw(vin)
-
-    result.update(vds_data)
-
-    # Dane techniczne VIN
-    result["🔢 WMI (poz. 1–3)"] = wmi
-    result["🔢 VDS (poz. 4–9)"] = vin[3:9]
-    result["🔢 VIS (poz. 10–17)"] = vin[9:17]
-    result["🔢 Nr seryjny (poz. 12–17)"] = vin[11:17]
-
-    return result
-
+# ─────────────────────────────────────────────
+#  MAPA VIN
+# ─────────────────────────────────────────────
 def render_vin_map(vin: str):
     chars_html = ""
     for i, ch in enumerate(vin):
-        if i < 3:
-            css = "ch-wmi"
-        elif i == 8:
-            css = "ch-chk"
-        elif i == 9:
-            css = "ch-year"
-        elif i < 9:
-            css = "ch-vds"
-        else:
-            css = "ch-vis"
+        if i < 3:       css = "ch-wmi"
+        elif i == 8:    css = "ch-chk"
+        elif i == 9:    css = "ch-year"
+        elif i < 9:     css = "ch-vds"
+        else:           css = "ch-vis"
         chars_html += f'<div class="vin-char"><div class="ch {css}">{ch}</div><div class="pos">{i+1}</div></div>'
-
     st.markdown(f"""
     <div class="vin-map">{chars_html}</div>
     <div class="vin-legend">
-        <div class="leg-item"><div class="leg-dot" style="background:#4da6ff;"></div><span style="color:#7a8099;">Poz. 1–3: WMI (producent/kraj)</span></div>
-        <div class="leg-item"><div class="leg-dot" style="background:#b57aff;"></div><span style="color:#7a8099;">Poz. 4–8: VDS (cechy pojazdu)</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:#4da6ff;"></div><span style="color:#7a8099;">Poz. 1–3: WMI (producent)</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:#b57aff;"></div><span style="color:#7a8099;">Poz. 4–8: VDS (opis pojazdu)</span></div>
         <div class="leg-item"><div class="leg-dot" style="background:#5fd68a;"></div><span style="color:#7a8099;">Poz. 9: suma kontrolna</span></div>
         <div class="leg-item"><div class="leg-dot" style="background:#e8c547;"></div><span style="color:#7a8099;">Poz. 10: rok modelowy</span></div>
         <div class="leg-item"><div class="leg-dot" style="background:#a0a8c8;"></div><span style="color:#7a8099;">Poz. 11–17: VIS (numer seryjny)</span></div>
     </div>
     """, unsafe_allow_html=True)
 
-GROUPS = {
-    "🚗 Podstawowe informacje": [
-        ("Marka", "Make"), ("Model", "Model"), ("Seria / Trim", "Series"),
-        ("Rok modelowy", "Model Year"), ("Typ pojazdu", "Vehicle Type"),
-        ("Typ nadwozia", "Body Class"), ("Liczba drzwi", "Doors"),
-        ("Liczba miejsc", "Seating Rows"), ("Przeznaczenie", "Destination Market"),
-    ],
-    "⚙️ Silnik i napęd": [
-        ("Pojemność silnika (L)", "Displacement (L)"),
-        ("Pojemność silnika (CC)", "Displacement (CC)"),
-        ("Liczba cylindrów", "Engine Number of Cylinders"),
-        ("Układ cylindrów", "Engine Configuration"),
-        ("Moc silnika (KM)", "Engine Brake (hp) From"),
-        ("Typ paliwa", "Fuel Type - Primary"),
-        ("Rodzaj napędu", "Drive Type"),
-        ("Skrzynia biegów", "Transmission Style"),
-        ("Liczba biegów", "Transmission Speeds"),
-        ("Turbosprężarka", "Turbo"),
-        ("Elektryfikacja", "Electrification Level"),
-        ("Zasięg EV (mile)", "EV Drive Range (miles) From"),
-    ],
-    "🏭 Produkcja i identyfikacja": [
-        ("Producent (NHTSA)", "Manufacturer Name"),
-        ("Kraj produkcji", "Plant Country"),
-        ("Miasto fabryki", "Plant City"),
-        ("Stan fabryki (USA)", "Plant State"),
-        ("Klasa GVWR", "GVWR Class"),
-        ("Numer GVWR", "GVWR"),
-        ("Kod WMI", "WMI"),
-        ("VDS", "VDS"), ("VIS", "VIS"),
-    ],
-    "🛡️ Bezpieczeństwo": [
-        ("Poduszki przednie", "Air Bag Loc Front"),
-        ("Poduszki boczne", "Air Bag Loc Side"),
-        ("Kurtyny powietrzne", "Air Bag Loc Curtain"),
-        ("Poduszka kolana", "Air Bag Loc Knee"),
-        ("System ABS", "Anti-Brake System (ABS)"),
-        ("Typ hamulców", "Brake System Type"),
-        ("TPMS", "Tire Pressure Monitoring System (TPMS) Type"),
-    ],
-    "📐 Wymiary": [
-        ("Rozstaw osi (cale)", "Wheelbase (inches) From"),
-        ("Długość (cale)", "Overall Length (inches) From"),
-        ("Szerokość (cale)", "Overall Width (inches) From"),
-        ("Wysokość (cale)", "Overall Height (inches) From"),
-        ("Ładowność (funt)", "Payload Capacity (lbs) From"),
-        ("Liczba osi", "Axles"),
-    ],
-}
+# ─────────────────────────────────────────────
+#  TABELA
+# ─────────────────────────────────────────────
+def render_table(data: dict):
+    rows = "".join(
+        f'<tr><td class="dt-label">{k}</td><td class="dt-value">{v}</td></tr>'
+        for k, v in data.items()
+    )
+    st.markdown(f'<div class="dt-wrapper"><table class="data-table">{rows}</table></div>',
+                unsafe_allow_html=True)
 
-def decode_vin_api(vin: str) -> tuple[bool, dict, str]:
+# ─────────────────────────────────────────────
+#  CLAUDE AI — DEKODOWANIE VIN
+# ─────────────────────────────────────────────
+def decode_with_claude(vin: str, manufacturer: str, country: str, year_hint: str) -> dict | None:
+    """
+    Wysyła VIN do Claude API i prosi o zdekodowanie.
+    Zwraca słownik z polami lub None przy błędzie.
+    """
+    prompt = f"""Zdekoduj poniższy numer VIN pojazdu i zwróć WYŁĄCZNIE obiekt JSON bez żadnych innych słów, komentarzy ani formatowania markdown.
+
+VIN: {vin}
+Znane dane: Producent={manufacturer}, Kraj={country}, Rok (przybliżony)={year_hint}
+
+Zwróć JSON z następującymi polami (wpisz null jeśli nieznane, nie zgaduj):
+{{
+  "marka": "...",
+  "model": "...",
+  "generacja": "...",
+  "rok_modelowy": "...",
+  "typ_nadwozia": "...",
+  "liczba_drzwi": "...",
+  "silnik_pojemnosc": "...",
+  "silnik_moc": "...",
+  "silnik_typ": "...",
+  "paliwo": "...",
+  "naped": "...",
+  "skrzynia_biegow": "...",
+  "fabryka": "...",
+  "kraj_produkcji": "...",
+  "numer_seryjny": "...",
+  "uwagi": "..."
+}}
+
+Zasady:
+- Dekoduj VDS (pozycje 4-9) zgodnie z rzeczywistymi tabelami kodów VIN dla tej marki i roku
+- Rok modelowy ustal na podstawie pozycji 10 VIN (standard ISO 3779)
+- Jeśli pozycja 10 to litera — podaj oba możliwe lata (np. 2003 lub 2033) i zaznacz który jest prawdopodobny
+- Jeśli VIN jest europejski i producent jest znany, użyj europejskich tabel kodów
+- W polu uwagi napisz po polsku co wiesz o tym konkretnym modelu na podstawie VIN"""
+
+    try:
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json"},
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 1000,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Wyciągnij tekst z odpowiedzi
+        text = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text += block.get("text", "")
+
+        # Oczyść z markdown jeśli są
+        text = text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"```[a-z]*\n?", "", text).strip().rstrip("`").strip()
+
+        result = json.loads(text)
+        return result
+
+    except Exception as e:
+        return None
+
+# ─────────────────────────────────────────────
+#  NHTSA API
+# ─────────────────────────────────────────────
+NHTSA_FIELDS = [
+    ("Make", "Marka"), ("Model", "Model"), ("Series", "Seria / Trim"),
+    ("Model Year", "Rok modelowy"), ("Vehicle Type", "Typ pojazdu"),
+    ("Body Class", "Typ nadwozia"), ("Doors", "Liczba drzwi"),
+    ("Displacement (L)", "Pojemność silnika (L)"),
+    ("Engine Number of Cylinders", "Liczba cylindrów"),
+    ("Engine Configuration", "Układ cylindrów"),
+    ("Engine Brake (hp) From", "Moc (KM)"),
+    ("Fuel Type - Primary", "Typ paliwa"),
+    ("Drive Type", "Rodzaj napędu"),
+    ("Transmission Style", "Skrzynia biegów"),
+    ("Transmission Speeds", "Liczba biegów"),
+    ("Turbo", "Turbosprężarka"),
+    ("Electrification Level", "Elektryfikacja"),
+    ("Manufacturer Name", "Producent"),
+    ("Plant Country", "Kraj fabryki"),
+    ("Plant City", "Miasto fabryki"),
+    ("Plant State", "Stan fabryki"),
+    ("GVWR Class", "Klasa GVWR"),
+    ("Anti-Brake System (ABS)", "System ABS"),
+    ("Air Bag Loc Front", "Poduszki przednie"),
+    ("Air Bag Loc Side", "Poduszki boczne"),
+    ("Wheelbase (inches) From", "Rozstaw osi (cale)"),
+]
+
+def decode_nhtsa(vin: str) -> tuple[bool, dict, str]:
     url = f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/{vin}?format=json"
     try:
         resp = requests.get(url, timeout=15)
@@ -837,117 +505,142 @@ def decode_vin_api(vin: str) -> tuple[bool, dict, str]:
         if not results_list:
             return False, {}, "API zwróciło pustą odpowiedź."
         raw = results_list[0]
-    except requests.exceptions.Timeout:
-        return False, {}, "Przekroczono czas oczekiwania (15 s)."
-    except requests.exceptions.ConnectionError:
-        return False, {}, "Brak połączenia z internetem."
     except Exception as e:
-        return False, {}, f"Błąd: {e}"
+        return False, {}, f"Błąd połączenia: {e}"
 
     BAD = {"", "not applicable", "n/a", "none", "0", "0.0"}
     data = {}
-    for group_label, fields in GROUPS.items():
-        for pl_label, api_key in fields:
-            val = raw.get(api_key, "")
-            if val and val.strip().lower() not in BAD:
-                data[pl_label] = val.strip()
+    for api_key, pl_label in NHTSA_FIELDS:
+        val = raw.get(api_key, "")
+        if val and val.strip().lower() not in BAD:
+            data[pl_label] = val.strip()
 
     if not data:
-        return False, {}, "Brak danych w bazie NHTSA dla tego VIN."
+        return False, {}, "Brak danych w bazie NHTSA."
     return True, data, ""
-
-def render_cards(data_dict: dict):
-    rows = "".join(
-        f'''<tr>
-            <td class="dt-label">{label}</td>
-            <td class="dt-value">{val}</td>
-        </tr>'''
-        for label, val in data_dict.items()
-    )
-    st.markdown(f'''
-    <div class="dt-wrapper">
-        <table class="data-table">{rows}</table>
-    </div>''', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  UI
 # ─────────────────────────────────────────────
 vin_input = st.text_input(
     "Numer VIN pojazdu",
-    placeholder="np. WVWZZZ1JZ3W386752 lub 1HGBH41JXMN109186",
+    placeholder="np. WBADP91020GX82421 lub 1HGBH41JXMN109186",
     max_chars=20,
-    help="17-znakowy numer identyfikacyjny pojazdu (bez liter I, O, Q)",
+    help="17-znakowy numer identyfikacyjny (bez I, O, Q)",
 )
 decode_btn = st.button("🔎 Dekoduj VIN", use_container_width=True)
 
 if decode_btn:
     if not vin_input.strip():
-        st.markdown('<span class="badge badge-err">⛔ Błąd</span>', unsafe_allow_html=True)
-        st.error("Pole VIN jest puste.")
+        st.error("Wpisz numer VIN.")
     else:
-        # Etap 1
+        # ── Etap 1: Walidacja
         st.markdown('<div class="section-label">Etap 1 — Walidacja formatu</div>', unsafe_allow_html=True)
-        valid, vin_clean, err_msg = validate_vin(vin_input)
-
+        valid, vin, err = validate_vin(vin_input)
         if not valid:
             st.markdown('<span class="badge badge-err">⛔ Błąd formatu</span>', unsafe_allow_html=True)
-            st.error(err_msg)
+            st.error(err)
         else:
             st.markdown('<span class="badge badge-ok">✓ Format VIN poprawny</span>', unsafe_allow_html=True)
 
             # Mapa VIN
             st.markdown('<div class="section-label">🗺️ Struktura VIN</div>', unsafe_allow_html=True)
-            render_vin_map(vin_clean)
+            render_vin_map(vin)
 
-            # Etap 2
+            # ── Etap 2: Suma kontrolna
             st.markdown('<div class="section-label">Etap 2 — Suma kontrolna</div>', unsafe_allow_html=True)
-            cs_ok, cs_expected, cs_actual = checksum_verify(vin_clean)
+            cs_ok, cs_exp, cs_act = checksum_verify(vin)
             if cs_ok:
-                st.markdown('<span class="badge badge-ok">✓ Suma kontrolna się zgadza</span>', unsafe_allow_html=True)
-                st.success(f"Znak kontrolny na pozycji 9: **{cs_actual}** — zgodny z algorytmem ISO/USA.")
+                st.markdown('<span class="badge badge-ok">✓ Suma kontrolna poprawna</span>', unsafe_allow_html=True)
+                st.success(f"Znak kontrolny na pozycji 9: **{cs_act}** — zgodny z algorytmem ISO/USA.")
             else:
-                st.markdown('<span class="badge badge-warn">⚠ Ostrzeżenie — suma kontrolna</span>', unsafe_allow_html=True)
+                st.markdown('<span class="badge badge-warn">⚠ Suma kontrolna — ostrzeżenie</span>', unsafe_allow_html=True)
                 st.warning(
-                    f"Suma kontrolna się **nie zgadza** — oczekiwano **{cs_expected}**, jest **{cs_actual}**.\n\n"
-                    "ℹ️ W UE weryfikacja sumy kontrolnej nie jest obowiązkowa — to normalne dla europejskich aut. Dekodowanie trwa."
+                    f"Algorytm oczekuje **{cs_exp}**, VIN zawiera **{cs_act}** na poz. 9. "
+                    "W UE suma kontrolna nie jest obowiązkowa — dekodowanie trwa."
                 )
 
-            # Etap 3A — lokalne dekodowanie (dla wszystkich)
-            st.markdown('<div class="section-label">Etap 3A — Dekodowanie lokalne (cały świat)</div>', unsafe_allow_html=True)
-            st.markdown('<span class="badge badge-info">ℹ Analiza struktury VIN — działa dla każdego auta</span>', unsafe_allow_html=True)
-            manual = decode_vin_manual(vin_clean)
-            render_cards(manual)
+            # ── Dane bazowe z WMI (szybkie, lokalne)
+            wmi = vin[:3]
+            manufacturer = "Nieznany"
+            country_wmi = COUNTRY_MAP.get(vin[0], "Nieznany")
+            if wmi in WMI_DB:
+                manufacturer, country_wmi = WMI_DB[wmi]
+            year_hint = get_year_str(vin)
 
-            # Etap 3B — NHTSA (tylko USA/Kanada/Meksyk)
-            is_usa = vin_clean[0] in ('1', '2', '3', '4', '5')
-            st.markdown('<div class="section-label">Etap 3B — Baza NHTSA (USA / Kanada / Meksyk)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-label">Etap 3A — Dane podstawowe (WMI)</div>', unsafe_allow_html=True)
+            render_table({
+                "🌍 Kraj produkcji": country_wmi,
+                "🏭 Producent": manufacturer,
+                "📅 Rok modelowy": year_hint,
+                "🔢 WMI": wmi,
+                "🔢 VDS (poz. 4–9)": vin[3:9],
+                "🔢 Nr seryjny (poz. 12–17)": vin[11:17],
+            })
 
-            if is_usa:
-                with st.spinner("Pobieranie danych z serwera NHTSA…"):
-                    time.sleep(0.3)
-                    api_ok, api_data, api_err = decode_vin_api(vin_clean)
+            # ── Etap 3B: Claude AI dekodowanie
+            st.markdown('<div class="section-label">Etap 3B — 🤖 Dekodowanie AI (Claude)</div>', unsafe_allow_html=True)
+            with st.spinner("Claude analizuje VIN i dekoduje szczegóły…"):
+                ai_result = decode_with_claude(vin, manufacturer, country_wmi, year_hint)
 
-                if not api_ok:
-                    st.markdown('<span class="badge badge-warn">⚠ NHTSA</span>', unsafe_allow_html=True)
-                    st.warning(f"NHTSA nie zwróciło danych: {api_err}")
-                else:
-                    st.markdown(f'<span class="badge badge-ok">✓ NHTSA: znaleziono {len(api_data)} parametrów</span>', unsafe_allow_html=True)
-                    for group_label, fields in GROUPS.items():
-                        group_fields = {pl: api_data[pl] for pl, _ in fields if pl in api_data}
-                        if not group_fields:
-                            continue
-                        st.markdown(f'<div class="section-label">{group_label}</div>', unsafe_allow_html=True)
-                        render_cards(group_fields)
+            if ai_result:
+                st.markdown('<span class="badge badge-ai">✦ Dekodowanie AI zakończone</span>', unsafe_allow_html=True)
+
+                # Przefiltruj pola — pokaż tylko niepuste
+                display = {}
+                field_labels = {
+                    "marka": "🚗 Marka",
+                    "model": "📋 Model",
+                    "generacja": "🏷️ Generacja",
+                    "rok_modelowy": "📅 Rok modelowy",
+                    "typ_nadwozia": "🚙 Typ nadwozia",
+                    "liczba_drzwi": "🚪 Liczba drzwi",
+                    "silnik_pojemnosc": "⚙️ Pojemność silnika",
+                    "silnik_moc": "💪 Moc silnika",
+                    "silnik_typ": "🔩 Typ silnika",
+                    "paliwo": "⛽ Rodzaj paliwa",
+                    "naped": "🔄 Napęd",
+                    "skrzynia_biegow": "⚙️ Skrzynia biegów",
+                    "fabryka": "🏭 Fabryka",
+                    "kraj_produkcji": "🌍 Kraj produkcji",
+                    "numer_seryjny": "🔢 Numer seryjny",
+                }
+                for key, label in field_labels.items():
+                    val = ai_result.get(key)
+                    if val and val != "null" and val is not None:
+                        display[label] = val
+
+                if display:
+                    render_table(display)
+
+                # Uwagi AI
+                uwagi = ai_result.get("uwagi")
+                if uwagi and uwagi != "null" and uwagi is not None:
+                    st.markdown(f"""
+                    <div class="ai-box">
+                        <h4>✦ Analiza AI</h4>
+                        {uwagi}
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
-                st.info(
-                    "ℹ️ Baza NHTSA zawiera dane tylko dla pojazdów z **USA, Kanady i Meksyku** "
-                    "(VIN zaczynający się od cyfry 1–5). "
-                    "Dla tego pojazdu skorzystaj z wyników dekodowania lokalnego powyżej."
-                )
+                st.markdown('<span class="badge badge-warn">⚠ AI niedostępne</span>', unsafe_allow_html=True)
+                st.warning("Nie udało się połączyć z Claude AI. Wyniki bazowe z WMI są powyżej.")
+
+            # ── Etap 3C: NHTSA (tylko USA/Kanada/Meksyk)
+            is_usa = vin[0] in ('1', '2', '3', '4', '5')
+            if is_usa:
+                st.markdown('<div class="section-label">Etap 3C — Baza NHTSA (USA/Kanada/Meksyk)</div>', unsafe_allow_html=True)
+                with st.spinner("Pobieranie z bazy NHTSA…"):
+                    nhtsa_ok, nhtsa_data, nhtsa_err = decode_nhtsa(vin)
+                if nhtsa_ok:
+                    st.markdown(f'<span class="badge badge-ok">✓ NHTSA: {len(nhtsa_data)} parametrów</span>', unsafe_allow_html=True)
+                    render_table(nhtsa_data)
+                else:
+                    st.warning(f"NHTSA: {nhtsa_err}")
 
             # Historia
-            if vin_clean not in st.session_state.history:
-                st.session_state.history.insert(0, vin_clean)
+            if vin not in st.session_state.history:
+                st.session_state.history.insert(0, vin)
                 if len(st.session_state.history) > 10:
                     st.session_state.history.pop()
 
@@ -955,27 +648,26 @@ if decode_btn:
 if st.session_state.history:
     st.markdown('<hr class="vin-divider">', unsafe_allow_html=True)
     st.markdown('<div class="section-label">Historia wyszukiwania (sesja)</div>', unsafe_allow_html=True)
-    chips_html = "".join(f'<span class="history-chip">{v}</span>' for v in st.session_state.history)
-    st.markdown(f'<div>{chips_html}</div>', unsafe_allow_html=True)
+    chips = "".join(f'<span class="history-chip">{v}</span>' for v in st.session_state.history)
+    st.markdown(f'<div>{chips}</div>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
-    col_clear, _ = st.columns([1, 4])
-    with col_clear:
+    col, _ = st.columns([1, 4])
+    with col:
         if st.button("🗑 Wyczyść historię", use_container_width=True):
             st.session_state.history = []
             st.rerun()
 
 st.markdown("""
 <hr class="vin-divider">
-<p style="text-align:center; color:#3d4255; font-size:0.78rem; margin-top:0.5rem;">
-    Dekodowanie globalne z bazy WMI (200+ producentów)
-    &nbsp;·&nbsp; <strong style="color:#5a607a;">NHTSA vPIC API</strong> dla aut USA/Kanada/Meksyk
-    &nbsp;·&nbsp; Standard <strong style="color:#5a607a;">ISO 3779</strong>
+<p style="text-align:center; color:#3d4255; font-size:0.78rem;">
+    🤖 <strong style="color:#5a607a;">Claude AI</strong> · Baza WMI 200+ producentów
+    · <strong style="color:#5a607a;">NHTSA vPIC API</strong> dla USA/Kanada/Meksyk
+    · Standard <strong style="color:#5a607a;">ISO 3779</strong>
 </p>
 """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════
 #  INSTRUKCJA URUCHOMIENIA
-# ═══════════════════════════════════════════════════════════════
 #  KROK 1:  pip install streamlit requests
 #  KROK 2:  streamlit run app.py
 #  KROK 3:  Otwórz http://localhost:8501

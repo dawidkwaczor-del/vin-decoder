@@ -59,15 +59,22 @@ html, body, [class*="css"] {
 }
 .stButton > button:hover { background: #f5d55a !important; transform: translateY(-1px) !important; }
 
-.result-card {
+.data-table { width: 100%; border-collapse: collapse; margin: 0; }
+.data-table tr { border-bottom: 1px solid #1e2130; }
+.data-table tr:last-child { border-bottom: none; }
+.data-table td { padding: 12px 16px; vertical-align: middle; }
+.data-table td.dt-label {
+    font-family: 'Space Mono', monospace; font-size: 0.7rem;
+    letter-spacing: 0.08em; color: #7a8099; text-transform: uppercase;
+    width: 42%; background: #171a22;
+}
+.data-table td.dt-value {
+    font-size: 0.97rem; font-weight: 500; color: #f0f2f8; background: #171a22;
+}
+.dt-wrapper {
     background: #171a22; border: 1px solid #2a2e3d;
-    border-radius: 12px; padding: 1.2rem 1.4rem; margin-bottom: 1rem;
+    border-radius: 12px; overflow: hidden; margin-bottom: 1.2rem;
 }
-.result-card h3 {
-    font-family: 'Space Mono', monospace; font-size: 0.68rem;
-    letter-spacing: 0.12em; color: #7a8099; text-transform: uppercase; margin: 0 0 0.5rem 0;
-}
-.result-card p { font-size: 1rem; font-weight: 500; color: #f0f2f8; margin: 0; }
 
 .badge {
     display: inline-block; padding: 5px 14px; border-radius: 20px;
@@ -153,6 +160,14 @@ WMI_DB = {
     "WOL": ("Opel",                "Niemcy"),
     "VSS": ("SEAT (DE)",           "Niemcy"),
     "SAJ": ("Jaguar (DE)",         "Niemcy"),
+    "WF0": ("Ford (Niemcy)",        "Niemcy"),
+    "WF1": ("Ford (Niemcy)",        "Niemcy"),
+    "WF2": ("Ford (Niemcy)",        "Niemcy"),
+    "WMA": ("MAN Trucks",           "Niemcy"),
+    "WMW": ("MINI",                 "Niemcy"),
+    "WMX": ("Mercedes-AMG",         "Niemcy"),
+    "WVG": ("Volkswagen SUV/MPV",   "Niemcy"),
+    "W0V": ("Opel/Vauxhall",        "Niemcy"),
     "SAL": ("Land Rover",          "Wielka Brytania"),
     "SAR": ("Rover",               "Wielka Brytania"),
     "SCB": ("Bentley",             "Wielka Brytania"),
@@ -198,6 +213,22 @@ WMI_DB = {
     "YVF": ("Volvo Trucks",        "Szwecja"),
     "YK1": ("Koenigsegg",          "Szwecja"),
     "XTA": ("AvtoVAZ / Łada",      "Rosja"),
+    "XLB": ("Volvo (NedCar)",       "Holandia"),
+    "XLE": ("Scania (NL)",          "Holandia"),
+    "XLR": ("DAF Trucks",           "Holandia"),
+    "XMC": ("Mitsubishi (NedCar)",  "Holandia"),
+    "YBW": ("Volkswagen (Belgia)",  "Belgia"),
+    "YCM": ("Mazda (Belgia)",       "Belgia"),
+    "YE2": ("Van Hool (busy)",      "Belgia"),
+    "MAJ": ("Ford (Indie)",         "Indie"),
+    "LVS": ("Ford (Chiny)",         "Chiny"),
+    "SAA": ("Jaguar",               "Wielka Brytania"),
+    "SAB": ("Land Rover",           "Wielka Brytania"),
+    "SCA": ("Rolls-Royce",          "Wielka Brytania"),
+    "SCF": ("Aston Martin",         "Wielka Brytania"),
+    "SED": ("General Motors (UK)",  "Wielka Brytania"),
+    "VNE": ("Toyota (UK)",          "Wielka Brytania"),
+    "ABK": ("Aston Martin",         "Wielka Brytania"),
     "XTT": ("GAZ",                 "Rosja"),
     "XUF": ("UAZ",                 "Rosja"),
     "JHM": ("Honda",               "Japonia"),
@@ -494,20 +525,17 @@ def decode_vin_api(vin: str) -> tuple[bool, dict, str]:
     return True, data, ""
 
 def render_cards(data_dict: dict):
-    items = list(data_dict.items())
-    while len(items) % 3 != 0:
-        items.append(None)
-    for row_start in range(0, len(items), 3):
-        cols = st.columns(3)
-        for ci, item in enumerate(items[row_start:row_start+3]):
-            with cols[ci]:
-                if item:
-                    label, val = item
-                    st.markdown(f"""
-                    <div class="result-card" style="min-height:90px;">
-                        <h3>{label}</h3>
-                        <p>{val}</p>
-                    </div>""", unsafe_allow_html=True)
+    rows = "".join(
+        f'''<tr>
+            <td class="dt-label">{label}</td>
+            <td class="dt-value">{val}</td>
+        </tr>'''
+        for label, val in data_dict.items()
+    )
+    st.markdown(f'''
+    <div class="dt-wrapper">
+        <table class="data-table">{rows}</table>
+    </div>''', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 #  UI

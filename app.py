@@ -447,15 +447,128 @@ VW_ENGINE_POS8 = {
     'X': 'Benzyna 1.4 TGI (CNG)', 'Y': 'Hybryd plug-in',
 }
 
-# BMW: pozycja 4 = seria/model
+# BMW: pozycja 4+5 = seria/model (poz. 4 to główny identyfikator)
 BMW_MODEL = {
-    'A': '1 Series', 'B': '2 Series', 'C': '3 Series',
-    'D': '4 Series', 'E': '5 Series', 'F': '6 Series',
-    'G': '7 Series', 'H': '8 Series', 'J': 'X1',
-    'K': 'X2', 'L': 'X3', 'M': 'X4', 'N': 'X5',
-    'P': 'X6', 'R': 'X7', 'S': 'Z4', 'T': 'i3',
-    'U': 'i4', 'V': 'iX', 'W': 'M3/M4', 'X': 'M5/M6',
-    'Y': 'Z4', 'Z': '4 Series Gran Coupe',
+    # Seria 1
+    'E': 'Seria 1 (E87/E81/F20/F40)',
+    # Seria 2
+    'F': 'Seria 2 / Active Tourer (F22/F45/F46)',
+    # Seria 3
+    'A': 'Seria 3 (E46/E90/F30/G20)',
+    # Seria 4
+    'B': 'Seria 4 (F32/F36/G22)',
+    # Seria 5
+    'C': 'Seria 5 (E60/F10/G30)',
+    # Seria 6
+    'D': 'Seria 6 (E63/F12/G32)',
+    # Seria 7
+    'G': 'Seria 7 (E65/F01/G11)',
+    # Seria 8
+    'H': 'Seria 8 (G14/G15)',
+    # X modele
+    'J': 'X1 (E84/F48/U11)',
+    'K': 'X3 (E83/F25/G01)',
+    'L': 'X4 (F26/G02)',
+    'M': 'X5 (E53/E70/F15/G05)',
+    'N': 'X6 (E71/F16/G06)',
+    'P': 'X7 (G07)',
+    'R': 'X2 (F39)',
+    'S': 'Z4 (E85/E89/G29)',
+    'T': 'Z3',
+    'U': 'i3 / iX3',
+    'V': 'i4 / iX',
+    'W': 'M3 / M4 / M5',
+    'X': 'M6 / M8',
+    'Y': 'X2 (F39) / X1',
+    'Z': 'Seria 4 Gran Coupe / i8',
+}
+
+# BMW poz. 5 = dodatkowy identyfikator modelu
+BMW_MODEL2 = {
+    'A': 'Sedan',
+    'B': 'Coupe',
+    'C': 'Cabrio / Convertible',
+    'D': 'Gran Coupe / 4-dr coupe',
+    'E': 'Touring / Kombi',
+    'F': 'Gran Turismo',
+    'G': 'xDrive (AWD)',
+    'H': 'sDrive (FWD/RWD)',
+    'J': 'Active Tourer',
+    'K': 'Gran Tourer',
+    'L': 'Limuzyna długa (L)',
+    'M': 'M Performance',
+    'N': 'xDrive SUV',
+    'P': 'SAV / SUV',
+    'R': 'Roadster',
+    'S': 'Sport',
+    'T': 'Sport Line',
+    'U': 'M Sport',
+    'V': 'Advantage',
+    'W': 'Luxury',
+    'X': 'xDrive',
+    'Y': 'sDrive',
+    'Z': 'Elektryczny (BEV)',
+}
+
+# BMW poz. 8 = silnik
+BMW_ENGINE = {
+    'A': 'Benzyna 1.5 3-cyl (B38)',
+    'B': 'Benzyna 2.0 4-cyl (B48)',
+    'C': 'Benzyna 3.0 6-cyl (B58)',
+    'D': 'Benzyna 4.4 V8 (N63/S63)',
+    'E': 'Diesel 2.0 4-cyl (B47)',
+    'F': 'Diesel 3.0 6-cyl (B57)',
+    'G': 'Diesel 4.4 V8',
+    'H': 'Benzyna 1.5 Hybrid (B38)',
+    'J': 'Benzyna 2.0 Hybrid (B48e)',
+    'K': 'Benzyna 3.0 M (S55/S58)',
+    'L': 'Benzyna 4.4 M (S63)',
+    'M': 'Elektryczny (BMW i)',
+    'N': 'Benzyna 1.6 4-cyl',
+    'P': 'Benzyna 2.0 N20/N26',
+    'R': 'Diesel 2.0 N47',
+    'S': 'Diesel 3.0 N57',
+    'T': 'Benzyna 4.4 N63',
+    'U': 'Benzyna 3.0 N55',
+    'V': 'Benzyna 2.0 N46',
+    'W': 'Benzyna 1.6 N13',
+    'X': 'Benzyna 2.0 N43',
+    'Y': 'Benzyna 1.5 B38 (X2 118i)',
+    'Z': 'Plug-in Hybrid',
+    '0': 'Benzyna 1.5 B38 / specjalny',
+    '1': 'Benzyna 1.5 3-cyl',
+    '3': 'Benzyna 2.0 turbo',
+    '5': 'Diesel 2.0',
+}
+
+# BMW fabryki (poz. 11)
+BMW_PLANT = {
+    'A': 'Dingolfing, Niemcy (Seria 5/6/7/8)',
+    'B': 'Monachium, Niemcy (Seria 3)',
+    'C': 'Regensburg, Niemcy (Seria 1/3/4)',
+    'D': 'Leipzig, Niemcy (Seria 1/2/i3)',
+    'E': 'Eisenach, Niemcy',
+    'G': 'Graz, Austria (Magna Steyr — Z4/Supra)',
+    'J': 'Spartanburg, USA (X3/X4/X5/X6/X7)',
+    'K': 'Oxford, UK (MINI)',
+    'L': 'Landshut, Niemcy',
+    'M': 'Monachium, Niemcy',
+    'N': 'Nedcar, Holandia (X1/X2)',
+    'P': 'Plant Rosslyn, RPA',
+    'R': 'Regensburg, Niemcy',
+    'S': 'Spartanburg, USA',
+    'T': 'Shenyang, Chiny (BMW Brilliance)',
+    'U': 'San Luis Potosí, Meksyk (Seria 3)',
+    'V': 'Chennai, Indie',
+    'W': 'Wackersdorf, Niemcy',
+    'X': 'Shenyang 2, Chiny',
+    'Y': 'Калининград (AvtoTor), Rosja',
+    'Z': 'Graz, Austria',
+    '0': 'Nedcar, Holandia (X1/X2/F39)',
+    '5': 'Nedcar, Holandia (X1/X2 F39)',
+    '6': 'Shenyang, Chiny',
+    '7': 'San Luis Potosí, Meksyk',
+    '8': 'Spartanburg, USA',
 }
 
 # Fabryki Forda w Europie (poz. 11)
@@ -530,7 +643,16 @@ def decode_vds_bmw(vin: str) -> dict:
     result = {}
     model = BMW_MODEL.get(vin[3], None)
     if model:
-        result["Model/Seria (VDS poz. 4)"] = model
+        result["Model/Seria BMW (poz. 4)"] = model
+    body = BMW_MODEL2.get(vin[4], None)
+    if body:
+        result["Typ nadwozia BMW (poz. 5)"] = body
+    engine = BMW_ENGINE.get(vin[7], None)
+    if engine:
+        result["Silnik BMW (poz. 8)"] = engine
+    plant = BMW_PLANT.get(vin[10], None)
+    if plant:
+        result["Fabryka BMW (poz. 11)"] = plant
     return result
 
 def smart_model_year(vin: str, wmi: str) -> str:
@@ -551,6 +673,9 @@ def smart_model_year(vin: str, wmi: str) -> str:
         'J':8,'K':9,'L':10,'M':11,'N':12,'P':13,'R':14,
         'S':15,'T':16,'V':17,'W':18,'X':19,'Y':20
     }
+    # '0' używane przez BMW i innych dla lat ~2019-2020 (niestandardowe)
+    if year_char == '0':
+        return "ok. 2019–2020 (kod niestandardowy)"
     if year_char not in LETTER_OFFSET:
         return "Nieznany"
 
@@ -583,6 +708,9 @@ def smart_model_year(vin: str, wmi: str) -> str:
     if year_new <= 2026:
         return f"{year_old} lub {year_new}"
     return str(year_old)
+
+# Handle '0' — niestandardowy kod używany przez niektórych producentów
+# (BMW od ~2019 używa '0' dla niektórych modeli = rok 2019/2020)
 
 def decode_vin_manual(vin: str) -> dict:
     result = {}
